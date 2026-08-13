@@ -19,9 +19,9 @@ outputs:
   hardware:
     description: "JSON document containing lshw system motherboard and RAM topology."
     value: ${{ steps.runner-fetch.outputs.hardware }}
-  disk_tree:
-    description: "JSON document containing the full filesystem tree with directory and file sizes."
-    value: ${{ steps.runner-fetch.outputs.disk_tree }}
+  disk_tree_path:
+    description: "Path to the JSON file containing the full filesystem tree with directory and file sizes."
+    value: ${{ steps.runner-fetch.outputs.disk_tree_path }}
 
 runs:
   using: composite

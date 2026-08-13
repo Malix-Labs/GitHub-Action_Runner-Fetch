@@ -18,7 +18,15 @@ ENV_JSON=$(jq -n \
 STORAGE_JSON=$(lsblk --json -o NAME,FSTYPE,LABEL,UUID,FSAVAIL,FSUSE%,SIZE,MOUNTPOINT,TYPE 2>/dev/null || echo '{"blockdevices":[]}')
 CPU_JSON=$(lscpu --json 2>/dev/null || echo '{"lscpu":[]}')
 HARDWARE_JSON=$(command -v lshw >/dev/null 2>&1 && sudo lshw -json -sanitize 2>/dev/null || echo '{}')
-DISK_TREE_JSON=$(command -v ncdu >/dev/null 2>&1 && sudo ncdu -o - -q / 2>/dev/null || echo '[]')
+OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
+mkdir -p "$OUT_DIR"
+DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
+
+if command -v ncdu >/dev/null 2>&1; then
+  sudo ncdu -o "$DISK_TREE_FILE" -q / 2>/dev/null || echo '[]' > "$DISK_TREE_FILE"
+else
+  echo '[]' > "$DISK_TREE_FILE"
+fi
 
 echo "=== ENVIRONMENT ===" && echo "$ENV_JSON"
 echo "=== CPU ===" && echo "$CPU_JSON"
@@ -37,6 +45,6 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
   emit_output "cpu" "$CPU_JSON"
   emit_output "storage" "$STORAGE_JSON"
   emit_output "hardware" "$HARDWARE_JSON"
-  emit_output "disk_tree" "$DISK_TREE_JSON"
+  echo "disk_tree_path=${DISK_TREE_FILE}" >> "$GITHUB_OUTPUT"
 fi
 
