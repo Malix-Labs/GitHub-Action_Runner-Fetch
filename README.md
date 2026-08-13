@@ -28,15 +28,13 @@ steps:
 
 | Output | Description |
 | :--- | :--- |
-| `environment` | JSON containing OS, distro, kernel, architecture, hostname, runner name, and uptime. |
-| `cpu` | JSON containing CPU model, cores, threads, and cache levels (`lscpu --json`). |
-| `storage` | JSON containing block devices, partitions, filesystem formats, and free space (`lsblk --json`). |
-| `hardware` | JSON containing hardware topology and RAM specs (`lshw -json`). |
+| `environment` | JSON containing OS, distro (`os_name`, `os_version`, `os_codename`), kernel, architecture, hostname, runner name, uptime, toolcache, and packages inventory. |
+| `cpu` | JSON containing CPU model, cores, threads, and cache levels (`lscpu --json` / `sysctl` / `Win32_Processor`). |
+| `storage` | JSON containing block devices, partitions, filesystem formats, and free space (`lsblk -b -O --json` / `diskutil` / `Get-Volume`). |
+| `hardware` | JSON containing hardware topology and RAM specs (`lshw -json` / `system_profiler` / `Win32_ComputerSystem`). |
 | `disk_tree_path` | Path to JSON file containing full recursive filesystem tree with file and directory sizes (`dust -j`). |
 
 ## Examples
 
-- **Linux (`ubuntu-latest`)**: https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/actions/workflows/fetch.yml?query=job%3Ainspect-runner+%28ubuntu-latest%29
-- **macOS (`macos-latest`)**: https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/actions/workflows/fetch.yml?query=job%3Ainspect-runner+%28macos-latest%29
-- **Windows (`windows-latest`)**: https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/actions/workflows/fetch.yml?query=job%3Ainspect-runner+%28windows-latest%29
+https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/actions/workflows/fetch.yml
 
