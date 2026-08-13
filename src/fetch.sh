@@ -22,6 +22,9 @@ fi
 
 case "$TARGET_OS" in
   "Linux")
+    TOOLCACHE_JSON=$(find /opt/hostedtoolcache -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+    PACKAGES_JSON=$(dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+
     ENV_JSON=$(jq -c -n \
       --arg os "Linux" \
       --arg arch "${RUNNER_ARCH:-$(uname -m)}" \
@@ -29,7 +32,9 @@ case "$TARGET_OS" in
       --arg hostname "$(hostname)" \
       --arg kernel "$(uname -r)" \
       --arg uptime "$(awk '{print $1}' /proc/uptime 2>/dev/null || echo '0')" \
-      '{runner_os: $os, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime}')
+      --argjson toolcache "$TOOLCACHE_JSON" \
+      --argjson packages "$PACKAGES_JSON" \
+      '{runner_os: $os, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
 
     STORAGE_JSON=$(lsblk -b -O --json 2>/dev/null | jq -c '.' || echo '{"blockdevices":[]}')
     CPU_JSON=$(lscpu --json 2>/dev/null | jq -c '.' || echo '{"lscpu":[]}')
@@ -45,6 +50,9 @@ case "$TARGET_OS" in
     ;;
 
   "macOS")
+    TOOLCACHE_JSON=$(find /Users/runner/hostedtoolcache -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+    PACKAGES_JSON=$(brew list --versions 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+
     ENV_JSON=$(jq -c -n \
       --arg os "macOS" \
       --arg arch "${RUNNER_ARCH:-$(uname -m)}" \
@@ -52,7 +60,9 @@ case "$TARGET_OS" in
       --arg hostname "$(hostname)" \
       --arg kernel "$(uname -r)" \
       --arg uptime "$(uptime | awk '{print $3}' 2>/dev/null || echo '0')" \
-      '{runner_os: $os, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime}')
+      --argjson toolcache "$TOOLCACHE_JSON" \
+      --argjson packages "$PACKAGES_JSON" \
+      '{runner_os: $os, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
 
     STORAGE_JSON=$(diskutil list -plist 2>/dev/null | plutil -convert json -o - - 2>/dev/null | jq -c '.' || echo '{}')
     CPU_JSON=$(sysctl -a hw 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
@@ -66,7 +76,7 @@ case "$TARGET_OS" in
     ;;
 
   "Windows")
-    ENV_JSON=$(pwsh -Command "[PSCustomObject]@{runner_os='Windows'; runner_arch='${RUNNER_ARCH:-X64}'; runner_name='${RUNNER_NAME:-unknown}'; hostname='$(hostname)'; kernel='$(uname -r)'} | ConvertTo-Json -Compress" 2>/dev/null || echo '{}')
+    ENV_JSON=$(pwsh -Command "\$tc = Get-ChildItem C:\\hostedtoolcache\\* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName; \$pkg = Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* -ErrorAction SilentlyContinue | Select-Object DisplayName, DisplayVersion; [PSCustomObject]@{runner_os='Windows'; runner_arch='${RUNNER_ARCH:-X64}'; runner_name='${RUNNER_NAME:-unknown}'; hostname='$(hostname)'; kernel='$(uname -r)'; toolcache=\$tc; packages=\$pkg} | ConvertTo-Json -Compress" 2>/dev/null || echo '{}')
     STORAGE_JSON=$(pwsh -Command "Get-Volume | Select-Object DriveLetter, FileSystemType, SizeRemaining, Size | ConvertTo-Json -Compress" 2>/dev/null || echo '[]')
     CPU_JSON=$(pwsh -Command "Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | ConvertTo-Json -Compress" 2>/dev/null || echo '[]')
     HARDWARE_JSON=$(pwsh -Command "Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model, TotalPhysicalMemory | ConvertTo-Json -Compress" 2>/dev/null || echo '{}')
