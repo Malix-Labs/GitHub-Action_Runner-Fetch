@@ -22,11 +22,31 @@ fi
 
 case "$TARGET_OS" in
   "Linux")
+    OS_NAME="Linux"
+    OS_VER="unknown"
+    OS_CODE="unknown"
+    OS_PRETTY="Linux"
+    OS_ID="linux"
+    if [ -f /etc/os-release ]; then
+      # shellcheck source=/dev/null
+      . /etc/os-release
+      OS_NAME="${NAME:-Linux}"
+      OS_VER="${VERSION_ID:-unknown}"
+      OS_CODE="${VERSION_CODENAME:-unknown}"
+      OS_PRETTY="${PRETTY_NAME:-Linux}"
+      OS_ID="${ID:-linux}"
+    fi
+
     TOOLCACHE_JSON=$(find /opt/hostedtoolcache -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
     PACKAGES_JSON=$(dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
 
     ENV_JSON=$(jq -c -n \
       --arg os "Linux" \
+      --arg os_name "$OS_NAME" \
+      --arg os_version "$OS_VER" \
+      --arg os_codename "$OS_CODE" \
+      --arg os_pretty_name "$OS_PRETTY" \
+      --arg os_id "$OS_ID" \
       --arg arch "${RUNNER_ARCH:-$(uname -m)}" \
       --arg name "${RUNNER_NAME:-unknown}" \
       --arg hostname "$(hostname)" \
@@ -34,7 +54,7 @@ case "$TARGET_OS" in
       --arg uptime "$(awk '{print $1}' /proc/uptime 2>/dev/null || echo '0')" \
       --argjson toolcache "$TOOLCACHE_JSON" \
       --argjson packages "$PACKAGES_JSON" \
-      '{runner_os: $os, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
+      '{runner_os: $os, os_name: $os_name, os_version: $os_version, os_codename: $os_codename, os_pretty_name: $os_pretty_name, os_id: $os_id, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
 
     STORAGE_JSON=$(lsblk -b -O --json 2>/dev/null | jq -c '.' || echo '{"blockdevices":[]}')
     CPU_JSON=$(lscpu --json 2>/dev/null | jq -c '.' || echo '{"lscpu":[]}')
