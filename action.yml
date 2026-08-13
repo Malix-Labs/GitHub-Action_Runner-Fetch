@@ -28,4 +28,4 @@ runs:
   steps:
     - id: runner-fetch
       shell: bash
-      run: "${{ github.action_path }}/src/fetch.sh"
+      run: '${{ github.action_path }}/src/fetch.sh'
