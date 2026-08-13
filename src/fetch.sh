@@ -125,4 +125,26 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   emit_gha_output "storage" "${STORAGE_JSON}"
   emit_gha_output "hardware" "${HARDWARE_JSON}"
   emit_gha_output "disk_tree_path" "${DISK_TREE_FILE}"
+
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    echo "::group::environment"
+    echo "${ENV_JSON}" | jq . 2>/dev/null || echo "${ENV_JSON}"
+    echo "::endgroup::"
+    echo ""
+    echo "::group::storage"
+    echo "${STORAGE_JSON}" | jq . 2>/dev/null || echo "${STORAGE_JSON}"
+    echo "::endgroup::"
+    echo ""
+    echo "::group::cpu"
+    echo "${CPU_JSON}" | jq . 2>/dev/null || echo "${CPU_JSON}"
+    echo "::endgroup::"
+    echo ""
+    echo "::group::hardware"
+    echo "${HARDWARE_JSON}" | jq . 2>/dev/null || echo "${HARDWARE_JSON}"
+    echo "::endgroup::"
+    echo ""
+    echo "::group::disk_tree_path"
+    echo "${DISK_TREE_FILE}"
+    echo "::endgroup::"
+  fi
 fi

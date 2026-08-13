@@ -11,8 +11,6 @@ GitHub Action to Fetch Information of its Runner
 
 In JSON format
 
----
-
 ## Usage
 
 ```yaml
@@ -26,8 +24,6 @@ steps:
       echo '${{ steps.fetch.outputs.storage }}' | jq '.blockdevices[] | select(.mountpoint == "/")'
 ```
 
----
-
 ## Outputs
 
 | Output | Description |
@@ -36,4 +32,11 @@ steps:
 | `cpu` | JSON containing CPU model, cores, threads, and cache levels (`lscpu --json`). |
 | `storage` | JSON containing block devices, partitions, filesystem formats, and free space (`lsblk --json`). |
 | `hardware` | JSON containing hardware topology and RAM specs (`lshw -json`). |
-| `disk_tree` | JSON containing full recursive filesystem tree with file and directory sizes (`ncdu -o - /`). |
+| `disk_tree_path` | Path to JSON file containing full recursive filesystem tree with file and directory sizes (`dust -j`). |
+
+## Examples
+
+- **Linux (`ubuntu-latest`)**: https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/actions/workflows/fetch.yml?query=job%3Ainspect-runner+%28ubuntu-latest%29
+- **macOS (`macos-latest`)**: https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/actions/workflows/fetch.yml?query=job%3Ainspect-runner+%28macos-latest%29
+- **Windows (`windows-latest`)**: https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/actions/workflows/fetch.yml?query=job%3Ainspect-runner+%28windows-latest%29
+
