@@ -27,5 +27,5 @@ runs:
   using: composite
   steps:
     - id: runner-fetch
-      shell: bash
+      shell: sh
       run: "'${{ github.action_path }}/src/fetch.sh'"
