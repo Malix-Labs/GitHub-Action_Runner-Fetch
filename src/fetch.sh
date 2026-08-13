@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 mkdir -p "$OUT_DIR"
@@ -109,14 +109,14 @@ case "$TARGET_OS" in
     ;;
 esac
 
-if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
   emit_gha_output() {
-    local name="$1"
-    local data="$2"
+    _out_name="$1"
+    _out_data="$2"
     {
-      echo "${name}<<EOF_${name}"
-      echo "${data}"
-      echo "EOF_${name}"
+      echo "${_out_name}<<EOF_${_out_name}"
+      echo "${_out_data}"
+      echo "EOF_${_out_name}"
     } >>"${GITHUB_OUTPUT}"
   }
 
@@ -126,7 +126,7 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   emit_gha_output "hardware" "${HARDWARE_JSON}"
   emit_gha_output "disk_tree_path" "${DISK_TREE_FILE}"
 
-  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
     echo "::group::environment"
     echo "${ENV_JSON}" | jq . 2>/dev/null || echo "${ENV_JSON}"
     echo "::endgroup::"
