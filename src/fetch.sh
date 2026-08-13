@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -euC
 
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 mkdir -p "$OUT_DIR"
