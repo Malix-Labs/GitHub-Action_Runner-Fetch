@@ -5,46 +5,45 @@ if ! command -v ncdu >/dev/null 2>&1; then
   sudo apt-get install -y -qq --no-install-recommends ncdu >/dev/null 2>&1 || true
 fi
 
-ENV_JSON=$(jq -n \
+OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
+mkdir -p "$OUT_DIR"
+
+ENV_JSON=$(jq -c -n \
   --arg os "${RUNNER_OS:-Linux}" \
   --arg arch "${RUNNER_ARCH:-$(uname -m)}" \
   --arg name "${RUNNER_NAME:-unknown}" \
   --arg hostname "$(hostname)" \
   --arg kernel "$(uname -r)" \
-  --arg distro "$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || uname -s)" \
-  --arg uptime "$(awk '{print $1}' /proc/uptime 2>/dev/null || echo 0)" \
-  '{runner_os: $os, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, distro: $distro, uptime_seconds: $uptime}')
+  --arg uptime "$(awk '{print $1}' /proc/uptime 2>/dev/null || echo '0')" \
+  '{
+    runner_os: $os,
+    runner_arch: $arch,
+    runner_name: $name,
+    hostname: $hostname,
+    kernel: $kernel,
+    uptime_seconds: $uptime
+  }')
 
-STORAGE_JSON=$(lsblk --json -o NAME,FSTYPE,LABEL,UUID,FSAVAIL,FSUSE%,SIZE,MOUNTPOINT,TYPE 2>/dev/null || echo '{"blockdevices":[]}')
-CPU_JSON=$(lscpu --json 2>/dev/null || echo '{"lscpu":[]}')
-HARDWARE_JSON=$(command -v lshw >/dev/null 2>&1 && sudo lshw -json -sanitize 2>/dev/null || echo '{}')
-OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
-mkdir -p "$OUT_DIR"
-DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
+STORAGE_JSON=$(lsblk --json -o NAME,FSTYPE,LABEL,UUID,FSAVAIL,FSUSE%,SIZE,MOUNTPOINT,TYPE 2>/dev/null | jq -c '.' || echo '{"blockdevices":[]}')
+CPU_JSON=$(lscpu --json 2>/dev/null | jq -c '.' || echo '{"lscpu":[]}')
+HARDWARE_JSON=$(sudo lshw -json -sanitize 2>/dev/null | jq -c '.' || echo '{}')
 
-if command -v ncdu >/dev/null 2>&1; then
-  sudo ncdu -o "$DISK_TREE_FILE" -q / 2>/dev/null || echo '[]' > "$DISK_TREE_FILE"
-else
-  echo '[]' > "$DISK_TREE_FILE"
-fi
+sudo ncdu -o "${OUT_DIR}/disk_tree.json" -q / 2>/dev/null || echo '[]' >"${OUT_DIR}/disk_tree.json"
 
-echo "=== ENVIRONMENT ===" && echo "$ENV_JSON"
-echo "=== CPU ===" && echo "$CPU_JSON"
-echo "=== STORAGE ===" && echo "$STORAGE_JSON"
-echo "=== HARDWARE ===" && echo "$HARDWARE_JSON"
-
-if [ -n "${GITHUB_OUTPUT:-}" ]; then
-  emit_output() {
-    local key="$1"
-    local val="$2"
-    echo "${key}<<EOF" >> "$GITHUB_OUTPUT"
-    echo "$val" | jq -c '.' >> "$GITHUB_OUTPUT"
-    echo "EOF" >> "$GITHUB_OUTPUT"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  emit_gha_output() {
+    local name="$1"
+    local data="$2"
+    {
+      echo "${name}<<EOF_${name}"
+      echo "${data}"
+      echo "EOF_${name}"
+    } >>"${GITHUB_OUTPUT}"
   }
-  emit_output "environment" "$ENV_JSON"
-  emit_output "cpu" "$CPU_JSON"
-  emit_output "storage" "$STORAGE_JSON"
-  emit_output "hardware" "$HARDWARE_JSON"
-  echo "disk_tree_path=${DISK_TREE_FILE}" >> "$GITHUB_OUTPUT"
-fi
 
+  emit_gha_output "environment" "${ENV_JSON}"
+  emit_gha_output "cpu" "${CPU_JSON}"
+  emit_gha_output "storage" "${STORAGE_JSON}"
+  emit_gha_output "hardware" "${HARDWARE_JSON}"
+  emit_gha_output "disk_tree_path" "${OUT_DIR}/disk_tree.json"
+fi
