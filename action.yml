@@ -1,0 +1,31 @@
+name: "GitHub Action - Runner Fetch"
+description: "GitHub Action to Fetch Information of its Runner"
+author: "Alix Brunet (Malix)"
+
+branding:
+  icon: cpu
+  color: blue
+
+outputs:
+  environment:
+    description: "JSON document containing OS, distro, kernel, architecture, hostname, runner name, and uptime."
+    value: ${{ steps.runner-fetch.outputs.environment }}
+  cpu:
+    description: "JSON document containing lscpu architecture, cores, threads, and cache details."
+    value: ${{ steps.runner-fetch.outputs.cpu }}
+  storage:
+    description: "JSON document containing lsblk block devices, partitions, filesystem formats, total and free space."
+    value: ${{ steps.runner-fetch.outputs.storage }}
+  hardware:
+    description: "JSON document containing lshw system motherboard and RAM topology."
+    value: ${{ steps.runner-fetch.outputs.hardware }}
+  disk_tree:
+    description: "JSON document containing the full filesystem tree with directory and file sizes."
+    value: ${{ steps.runner-fetch.outputs.disk_tree }}
+
+runs:
+  using: composite
+  steps:
+    - id: runner-fetch
+      shell: bash
+      run: ${{ github.action_path }}/src/fetch.sh
