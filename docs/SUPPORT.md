@@ -1,4 +1,4 @@
 # Support
 
-- [**Issues**](https://github.com/Malix-Labs/<REPOSITORY>/issues)
-- [**Discussions**](https://github.com/Malix-Labs/<REPOSITORY>/discussions)
+- [**Issues**](https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/issues)
+- [**Discussions**](https://github.com/Malix-Labs/GitHub-Action_Runner-Fetch/discussions)
