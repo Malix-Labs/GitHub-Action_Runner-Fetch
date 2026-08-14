@@ -58,9 +58,9 @@ case "$TARGET_OS" in
       --argjson packages "$PACKAGES_JSON" \
       '{runner_os: $os, os_name: $os_name, os_version: $os_version, os_codename: $os_codename, os_pretty_name: $os_pretty_name, os_id: $os_id, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
 
-    STORAGE_JSON=$(lsblk -b -O --json 2> /dev/null | jq -c '.' || echo '{"blockdevices":[]}')
-    CPU_JSON=$(lscpu -B --json 2> /dev/null | jq -c '.' || echo '{"lscpu":[]}')
-    HARDWARE_JSON=$(sudo lshw -json 2> /dev/null | jq -c '.' || echo '{}')
+    STORAGE_JSON=$(lsblk -b -O --json 2> /dev/null || echo '{"blockdevices":[]}')
+    CPU_JSON=$(lscpu -B --json 2> /dev/null || echo '{"lscpu":[]}')
+    HARDWARE_JSON=$(sudo lshw -json 2> /dev/null || echo '{}')
     ;;
 
   "macOS")
@@ -80,7 +80,7 @@ case "$TARGET_OS" in
 
     STORAGE_JSON=$(diskutil list -plist 2> /dev/null | plutil -convert json -o - - 2> /dev/null | jq -c '.' || echo '{}')
     CPU_JSON=$(sysctl -a hw 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
-    HARDWARE_JSON=$(system_profiler -json SPHardwareDataType SPStorageDataType 2> /dev/null | jq -c '.' || echo '{}')
+    HARDWARE_JSON=$(system_profiler -json SPHardwareDataType SPStorageDataType 2> /dev/null || echo '{}')
     ;;
 
   "Windows")
