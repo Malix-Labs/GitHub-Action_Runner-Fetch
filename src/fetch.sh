@@ -16,9 +16,7 @@ if ! command -v dust >/dev/null 2>&1; then
 fi
 
 DUST_BIN="dust"
-if [ -f "${OUT_DIR}/dust" ]; then
-  DUST_BIN="${OUT_DIR}/dust"
-fi
+[ -f "${OUT_DIR}/dust" ] && DUST_BIN="${OUT_DIR}/dust"
 
 TARGET_ROOT="/"
 
@@ -34,8 +32,7 @@ case "$TARGET_OS" in
   OS_PRETTY="${PRETTY_NAME:-Linux}"
   OS_ID="${ID:-linux}"
 
-  TOOLCACHE_DIR="${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}"
-  TOOLCACHE_JSON=$(find "$TOOLCACHE_DIR" -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+  TOOLCACHE_JSON=$(find "${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}" -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
   PACKAGES_JSON=$(dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
 
   ENV_JSON=$(jq -c -n \
@@ -60,8 +57,7 @@ case "$TARGET_OS" in
   ;;
 
 "macOS")
-  TOOLCACHE_DIR="${RUNNER_TOOL_CACHE:-/Users/runner/hostedtoolcache}"
-  TOOLCACHE_JSON=$(find "$TOOLCACHE_DIR" -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+  TOOLCACHE_JSON=$(find "${RUNNER_TOOL_CACHE:-/Users/runner/hostedtoolcache}" -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
   PACKAGES_JSON=$(brew list --versions 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
 
   ENV_JSON=$(jq -c -n \
@@ -101,25 +97,14 @@ else
 fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
-  emit_gha_output() {
-    _out_name="$1"
-    _out_data="$2"
-    {
-      echo "${_out_name}<<EOF_${_out_name}"
-      echo "${_out_data}"
-      echo "EOF_${_out_name}"
-    } >>"${GITHUB_OUTPUT}"
-  }
-
-  for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}"; do
+  for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}" "disk_tree_path:${DISK_TREE_FILE}"; do
     name="${item%%:*}"
     val="${item#*:}"
-    emit_gha_output "$name" "$val"
-    if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    printf '%s<<EOF_%s\n%s\nEOF_%s\n' "$name" "$name" "$val" "$name" >>"$GITHUB_OUTPUT"
+    if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ "$name" != "disk_tree_path" ]; then
       echo "::group::${name}"
       echo "${val}" | jq . 2>/dev/null || echo "${val}"
       echo "::endgroup::"
     fi
   done
-  emit_gha_output "disk_tree_path" "${DISK_TREE_FILE}"
 fi
