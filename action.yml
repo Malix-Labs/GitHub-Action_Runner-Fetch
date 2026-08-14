@@ -29,3 +29,7 @@ runs:
     - id: runner-fetch
       shell: sh
       run: "'${{ github.action_path }}/src/fetch.sh'"
+    - uses: actions/upload-artifact@v7
+      with:
+        name: disk-tree-${{ runner.os }}
+        path: ${{ steps.runner-fetch.outputs.disk_tree_path }}

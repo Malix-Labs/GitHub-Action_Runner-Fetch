@@ -139,8 +139,5 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "::group::hardware"
     echo "${HARDWARE_JSON}" | jq . 2>/dev/null || echo "${HARDWARE_JSON}"
     echo "::endgroup::"
-    echo "::group::disk_tree_path"
-    echo "${DISK_TREE_FILE}"
-    echo "::endgroup::"
   fi
 fi
