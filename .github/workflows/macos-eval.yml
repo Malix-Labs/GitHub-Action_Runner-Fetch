@@ -1,0 +1,14 @@
+name: macOS Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        required: true
+        type: string
+
+jobs:
+  eval:
+    runs-on: macos-latest
+    steps:
+      - run: ${{ inputs.script }}
