@@ -59,7 +59,7 @@ case "$TARGET_OS" in
       '{runner_os: $os, os_name: $os_name, os_version: $os_version, os_codename: $os_codename, os_pretty_name: $os_pretty_name, os_id: $os_id, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
 
     STORAGE_JSON=$(lsblk -b -O --json 2> /dev/null | jq -c '.' || echo '{"blockdevices":[]}')
-    CPU_JSON=$(lscpu --json 2> /dev/null | jq -c '.' || echo '{"lscpu":[]}')
+    CPU_JSON=$(lscpu -B --json 2> /dev/null | jq -c '.' || echo '{"lscpu":[]}')
     HARDWARE_JSON=$(sudo lshw -json -sanitize 2> /dev/null | jq -c '.' || echo '{}')
     ;;
 
