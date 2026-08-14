@@ -8,10 +8,18 @@ DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 TARGET_OS="${RUNNER_OS:-Linux}"
 
 if ! command -v dust >/dev/null 2>&1; then
+  DUST_TAG=$(curl -sL https://api.github.com/repos/bootandy/dust/releases/latest 2>/dev/null | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
   case "$TARGET_OS" in
-  "Linux") curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-unknown-linux-musl.tar.gz | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
-  "macOS") curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-apple-darwin.tar.gz | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
-  "Windows") curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-pc-windows-msvc.zip -o "${OUT_DIR}/dust.zip" 2>/dev/null && unzip -q -o -j "${OUT_DIR}/dust.zip" "*/dust.exe" -d "$OUT_DIR" 2>/dev/null && mv "${OUT_DIR}/dust.exe" "${OUT_DIR}/dust" 2>/dev/null || true ;;
+  "Linux") curl -sL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
+
+  "macOS")
+    MAC_ARCH="$(uname -m)"
+    [ "$MAC_ARCH" = "arm64" ] && MAC_ARCH="aarch64"
+    curl -sL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-${MAC_ARCH}-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null ||
+      curl -sL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true
+    ;;
+
+  "Windows") curl -sL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" 2>/dev/null && unzip -q -o -j "${OUT_DIR}/dust.zip" "*/dust.exe" -d "$OUT_DIR" 2>/dev/null && mv "${OUT_DIR}/dust.exe" "${OUT_DIR}/dust" 2>/dev/null || true ;;
   esac
 fi
 
