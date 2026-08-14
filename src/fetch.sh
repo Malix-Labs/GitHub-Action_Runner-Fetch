@@ -24,20 +24,15 @@ TARGET_ROOT="/"
 
 case "$TARGET_OS" in
 "Linux")
-  OS_NAME="Linux"
-  OS_VER="unknown"
-  OS_CODE="unknown"
-  OS_PRETTY="Linux"
-  OS_ID="linux"
   if [ -f /etc/os-release ]; then
     # shellcheck source=/dev/null
     . /etc/os-release
-    OS_NAME="${NAME:-Linux}"
-    OS_VER="${VERSION_ID:-unknown}"
-    OS_CODE="${VERSION_CODENAME:-unknown}"
-    OS_PRETTY="${PRETTY_NAME:-Linux}"
-    OS_ID="${ID:-linux}"
   fi
+  OS_NAME="${NAME:-Linux}"
+  OS_VER="${VERSION_ID:-unknown}"
+  OS_CODE="${VERSION_CODENAME:-unknown}"
+  OS_PRETTY="${PRETTY_NAME:-Linux}"
+  OS_ID="${ID:-linux}"
 
   TOOLCACHE_DIR="${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}"
   TOOLCACHE_JSON=$(find "$TOOLCACHE_DIR" -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
@@ -86,7 +81,9 @@ case "$TARGET_OS" in
   ;;
 
 "Windows")
+  # shellcheck disable=SC1003
   TARGET_ROOT='C:\'
+
   ENV_JSON=$(pwsh -Command "\$tc = Get-ChildItem C:\\hostedtoolcache\\* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName; \$pkg = Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* -ErrorAction SilentlyContinue | Select-Object DisplayName, DisplayVersion; [PSCustomObject]@{runner_os='Windows'; runner_arch='${RUNNER_ARCH:-X64}'; runner_name='${RUNNER_NAME:-unknown}'; hostname='$(hostname)'; kernel='$(uname -r)'; toolcache=\$tc; packages=\$pkg} | ConvertTo-Json -Compress" 2>/dev/null || echo '{}')
   STORAGE_JSON=$(pwsh -Command "Get-Volume | Select-Object DriveLetter, FileSystemType, SizeRemaining, Size | ConvertTo-Json -Compress" 2>/dev/null || echo '[]')
   CPU_JSON=$(pwsh -Command "Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | ConvertTo-Json -Compress" 2>/dev/null || echo '[]')
