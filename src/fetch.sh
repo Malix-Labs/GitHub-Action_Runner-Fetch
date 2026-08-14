@@ -12,7 +12,7 @@ if ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${
   case "$TARGET_OS" in
   "Linux") curl -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
   "macOS") curl -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
-  "Windows") curl.exe -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" && tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" 2>/dev/null && find "$OUT_DIR" -name "dust.exe" -exec mv {} "${OUT_DIR}/dust.exe" \; ;;
+  "Windows") curl.exe -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" && tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" && find "$OUT_DIR" -name "dust.exe" -exec mv {} "${OUT_DIR}/dust.exe" \; ;;
   esac
 fi
 
@@ -98,7 +98,7 @@ esac
 ARTIFACT_NAME="disk-tree-${TARGET_OS}${OS_LABEL:+-${OS_LABEL}}-${RUNNER_ARCH:-$(uname -m)}"
 
 FETCH_ERR=0
-"$DUST_BIN" -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" 2>/dev/null || FETCH_ERR=$?
+"$DUST_BIN" -P -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" || FETCH_ERR=$?
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}" "disk_tree_path:${DISK_TREE_FILE}" "artifact_name:${ARTIFACT_NAME}"; do
