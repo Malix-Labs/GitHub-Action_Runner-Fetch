@@ -55,8 +55,12 @@ case "$TARGET_OS" in
 
   STORAGE_JSON=$(lsblk -b -O --json 2>/dev/null || echo '{"blockdevices":[]}')
   CPU_JSON=$(lscpu -B --json 2>/dev/null || echo '{"lscpu":[]}')
-  HARDWARE_JSON=$(sudo lshw -json 2>/dev/null || echo '{}')
-  OS_LABEL="${OS_NAME}-${OS_VER}"
+  HARDWARE_JSON=$(sudo -n lshw -json 2>/dev/null || lshw -json 2>/dev/null || echo '{}')
+  OS_EXTRA=""
+  if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+    OS_EXTRA="slim"
+  fi
+  OS_LABEL="${OS_NAME}-${OS_VER}${OS_EXTRA:+-${OS_EXTRA}}"
   ;;
 
 "macOS")
@@ -77,6 +81,7 @@ case "$TARGET_OS" in
   STORAGE_JSON=$(diskutil list -plist 2>/dev/null | plutil -convert json -o - - 2>/dev/null || echo '{}')
   CPU_JSON=$(sysctl -a hw 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
   HARDWARE_JSON=$(system_profiler -json SPHardwareDataType SPStorageDataType 2>/dev/null || echo '{}')
+  OS_LABEL="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1 || echo '')"
   ;;
 
 "Windows")
@@ -87,7 +92,9 @@ case "$TARGET_OS" in
   STORAGE_JSON=$(pwsh -Command "Get-Volume | Select-Object DriveLetter, FileSystemType, SizeRemaining, Size | ConvertTo-Json -Compress" 2>/dev/null || echo '[]')
   CPU_JSON=$(pwsh -Command "Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | ConvertTo-Json -Compress" 2>/dev/null || echo '[]')
   HARDWARE_JSON=$(pwsh -Command "Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model, TotalPhysicalMemory | ConvertTo-Json -Compress" 2>/dev/null || echo '{}')
+  OS_LABEL=$(pwsh -Command "(Get-CimInstance Win32_OperatingSystem).Caption -replace '[^0-9]', ''" 2>/dev/null || echo '')
   ;;
+
 esac
 
 ARTIFACT_NAME="disk-tree-${TARGET_OS}${OS_LABEL:+-${OS_LABEL}}-${RUNNER_ARCH:-$(uname -m)}"
