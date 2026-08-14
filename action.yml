@@ -22,6 +22,9 @@ outputs:
   disk_tree_path:
     description: "Path to the JSON file containing the full filesystem tree with directory and file sizes."
     value: ${{ steps.runner-fetch.outputs.disk_tree_path }}
+  artifact_name:
+    description: "Deterministic name of the uploaded disk tree artifact."
+    value: ${{ steps.runner-fetch.outputs.artifact_name }}
 
 runs:
   using: composite
@@ -31,5 +34,5 @@ runs:
       run: "'${{ github.action_path }}/src/fetch.sh'"
     - uses: actions/upload-artifact@v7
       with:
-        name: disk-tree-${{ runner.os }}-${{ runner.arch }}
+        name: ${{ steps.runner-fetch.outputs.artifact_name }}
         path: ${{ steps.runner-fetch.outputs.disk_tree_path }}

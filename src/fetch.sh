@@ -62,6 +62,7 @@ case "$TARGET_OS" in
   STORAGE_JSON=$(lsblk -b -O --json 2>/dev/null || echo '{"blockdevices":[]}')
   CPU_JSON=$(lscpu -B --json 2>/dev/null || echo '{"lscpu":[]}')
   HARDWARE_JSON=$(sudo lshw -json 2>/dev/null || echo '{}')
+  OS_LABEL="${OS_NAME}-${OS_VER}"
   ;;
 
 "macOS")
@@ -95,6 +96,8 @@ case "$TARGET_OS" in
   ;;
 esac
 
+ARTIFACT_NAME="disk-tree-${TARGET_OS}${OS_LABEL:+-${OS_LABEL}}-${RUNNER_ARCH:-$(uname -m)}"
+
 if command -v "$DUST_BIN" >/dev/null 2>&1; then
   "$DUST_BIN" -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" 2>/dev/null || echo '[]' >"$DISK_TREE_FILE"
 
@@ -105,11 +108,11 @@ else
 fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
-  for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}" "disk_tree_path:${DISK_TREE_FILE}"; do
+  for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}" "disk_tree_path:${DISK_TREE_FILE}" "artifact_name:${ARTIFACT_NAME}"; do
     name="${item%%:*}"
     val="${item#*:}"
     printf '%s<<EOF_%s\n%s\nEOF_%s\n' "$name" "$name" "$val" "$name" >>"$GITHUB_OUTPUT"
-    if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ "$name" != "disk_tree_path" ]; then
+    if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ "$name" != "disk_tree_path" ] && [ "$name" != "artifact_name" ]; then
       echo "::group::${name}"
       echo "${val}" | jq . 2>/dev/null || echo "${val}"
       echo "::endgroup::"
