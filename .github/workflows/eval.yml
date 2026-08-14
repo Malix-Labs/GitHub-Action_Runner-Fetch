@@ -1,0 +1,35 @@
+name: Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        required: true
+        type: string
+      shell:
+        default: bash
+        type: string
+      script:
+        required: true
+        type: string
+
+jobs:
+  eval:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - if: ${{ inputs.shell == 'bash' }}
+        run: ${{ inputs.script }}
+        shell: bash
+
+      - if: ${{ inputs.shell == 'pwsh' }}
+        run: ${{ inputs.script }}
+        shell: pwsh
+
+      - if: ${{ inputs.shell == 'cmd' }}
+        run: ${{ inputs.script }}
+        shell: cmd
+
+      - if: ${{ inputs.shell == 'sh' }}
+        run: ${{ inputs.script }}
+        shell: sh
+
