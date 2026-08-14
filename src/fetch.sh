@@ -7,18 +7,19 @@ DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 
 TARGET_OS="${RUNNER_OS:-Linux}"
 
-if ! command -v dust >/dev/null 2>&1; then
-  DUST_TAG=$(curl -sL https://api.github.com/repos/bootandy/dust/releases/latest 2>/dev/null | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
+if ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${OUT_DIR}/dust.exe" ]; then
+  DUST_TAG=$(curl -sfL https://api.github.com/repos/bootandy/dust/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
   case "$TARGET_OS" in
-  "Linux") curl -sL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
-
-  "macOS") curl -sL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
-  "Windows") curl.exe -sL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" 2>/dev/null && (tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" 2>/dev/null || pwsh -Command "Expand-Archive -Path '${OUT_DIR}/dust.zip' -DestinationPath '${OUT_DIR}' -Force" 2>/dev/null) && mv "${OUT_DIR}/dust.exe" "${OUT_DIR}/dust" 2>/dev/null || true ;;
+  "Linux") curl -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
+  "macOS") curl -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
+  "Windows") curl.exe -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" && tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" 2>/dev/null && find "$OUT_DIR" -name "dust.exe" -exec mv {} "${OUT_DIR}/dust.exe" \; ;;
   esac
 fi
 
 DUST_BIN="dust"
 [ -f "${OUT_DIR}/dust" ] && DUST_BIN="${OUT_DIR}/dust"
+[ -f "${OUT_DIR}/dust.exe" ] && DUST_BIN="${OUT_DIR}/dust.exe"
+[ -w "$DUST_BIN" ] && chmod +x "$DUST_BIN"
 
 TARGET_ROOT="/"
 
@@ -57,9 +58,7 @@ case "$TARGET_OS" in
   CPU_JSON=$(lscpu -B --json 2>/dev/null || echo '{"lscpu":[]}')
   HARDWARE_JSON=$(sudo -n lshw -json 2>/dev/null || lshw -json 2>/dev/null || echo '{}')
   OS_EXTRA=""
-  if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
-    OS_EXTRA="slim"
-  fi
+  { [ -f /.dockerenv ] || [ -f /run/.containerenv ]; } && OS_EXTRA="slim"
   OS_LABEL="${OS_NAME}-${OS_VER}${OS_EXTRA:+-${OS_EXTRA}}"
   ;;
 
@@ -94,19 +93,12 @@ case "$TARGET_OS" in
   HARDWARE_JSON=$(pwsh -Command "Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model, TotalPhysicalMemory | ConvertTo-Json -Compress" 2>/dev/null || echo '{}')
   OS_LABEL=$(pwsh -Command "(Get-CimInstance Win32_OperatingSystem).Caption -replace '[^0-9]', ''" 2>/dev/null || echo '')
   ;;
-
 esac
 
 ARTIFACT_NAME="disk-tree-${TARGET_OS}${OS_LABEL:+-${OS_LABEL}}-${RUNNER_ARCH:-$(uname -m)}"
 
-if command -v "$DUST_BIN" >/dev/null 2>&1; then
-  "$DUST_BIN" -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" 2>/dev/null || echo '[]' >"$DISK_TREE_FILE"
-
-elif command -v ncdu >/dev/null 2>&1; then
-  sudo ncdu -o "$DISK_TREE_FILE" --exclude-kernfs -e -0 / 2>/dev/null || echo '[]' >"$DISK_TREE_FILE"
-else
-  echo '[]' >"$DISK_TREE_FILE"
-fi
+FETCH_ERR=0
+"$DUST_BIN" -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" 2>/dev/null || FETCH_ERR=$?
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}" "disk_tree_path:${DISK_TREE_FILE}" "artifact_name:${ARTIFACT_NAME}"; do
@@ -119,4 +111,9 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
       echo "::endgroup::"
     fi
   done
+fi
+
+if [ ! -s "$DISK_TREE_FILE" ]; then
+  echo "::error::disk_tree.json is missing or empty (dust exit code: $FETCH_ERR)" >&2
+  exit 1
 fi
