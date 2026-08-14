@@ -5,7 +5,8 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 4' # after every weekly runners-images release (https://github.com/actions/runner-images/releases)
 
 jobs:
   inspect-runner:
