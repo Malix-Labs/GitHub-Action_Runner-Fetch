@@ -8,11 +8,11 @@ DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 TARGET_OS="${RUNNER_OS:-Linux}"
 
 if ! command -v dust >/dev/null 2>&1; then
-  if [ "$TARGET_OS" = "Linux" ]; then
-    curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-unknown-linux-musl.tar.gz | tar -xz -C "$OUT_DIR" 2>/dev/null || true
-  elif [ "$TARGET_OS" = "macOS" ]; then
-    curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-apple-darwin.tar.gz | tar -xz -C "$OUT_DIR" 2>/dev/null || true
-  fi
+  case "$TARGET_OS" in
+    "Linux")   curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-unknown-linux-musl.tar.gz | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
+    "macOS")   curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-apple-darwin.tar.gz | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
+    "Windows") curl -sL https://github.com/bootandy/dust/releases/download/v1.1.1/dust-v1.1.1-x86_64-pc-windows-msvc.zip -o "${OUT_DIR}/dust.zip" 2>/dev/null && unzip -q -o -j "${OUT_DIR}/dust.zip" "*/dust.exe" -d "$OUT_DIR" 2>/dev/null && mv "${OUT_DIR}/dust.exe" "${OUT_DIR}/dust" 2>/dev/null || true ;;
+  esac
 fi
 
 DUST_BIN="dust"
