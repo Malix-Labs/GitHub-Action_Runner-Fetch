@@ -39,7 +39,8 @@ case "$TARGET_OS" in
       OS_ID="${ID:-linux}"
     fi
 
-    TOOLCACHE_JSON=$(find /opt/hostedtoolcache -mindepth 2 -maxdepth 2 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+    TOOLCACHE_DIR="${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}"
+    TOOLCACHE_JSON=$(find "$TOOLCACHE_DIR" -mindepth 2 -maxdepth 2 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
     PACKAGES_JSON=$(dpkg-query -W -f='${Package}\t${Version}\n' 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
 
     ENV_JSON=$(jq -c -n \
@@ -64,7 +65,8 @@ case "$TARGET_OS" in
     ;;
 
   "macOS")
-    TOOLCACHE_JSON=$(find /Users/runner/hostedtoolcache -mindepth 2 -maxdepth 2 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+    TOOLCACHE_DIR="${RUNNER_TOOL_CACHE:-/Users/runner/hostedtoolcache}"
+    TOOLCACHE_JSON=$(find "$TOOLCACHE_DIR" -mindepth 2 -maxdepth 2 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
     PACKAGES_JSON=$(brew list --versions 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
 
     ENV_JSON=$(jq -c -n \
@@ -78,7 +80,7 @@ case "$TARGET_OS" in
       --argjson packages "$PACKAGES_JSON" \
       '{runner_os: $os, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
 
-    STORAGE_JSON=$(diskutil list -plist 2> /dev/null | plutil -convert json -o - - 2> /dev/null | jq -c '.' || echo '{}')
+    STORAGE_JSON=$(diskutil list -plist 2> /dev/null | plutil -convert json -o - - 2> /dev/null || echo '{}')
     CPU_JSON=$(sysctl -a hw 2> /dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
     HARDWARE_JSON=$(system_profiler -json SPHardwareDataType SPStorageDataType 2> /dev/null || echo '{}')
     ;;
