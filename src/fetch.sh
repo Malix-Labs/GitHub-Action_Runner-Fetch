@@ -95,7 +95,7 @@ case "$TARGET_OS" in
 esac
 
 if command -v "$DUST_BIN" > /dev/null 2>&1; then
-  "$DUST_BIN" -j "$TARGET_ROOT" > "$DISK_TREE_FILE" 2> /dev/null || echo '[]' > "$DISK_TREE_FILE"
+  "$DUST_BIN" -j -d 1000 -n 10000000 "$TARGET_ROOT" > "$DISK_TREE_FILE" 2> /dev/null || echo '[]' > "$DISK_TREE_FILE"
 
 elif command -v ncdu > /dev/null 2>&1; then
   sudo ncdu -o "$DISK_TREE_FILE" --exclude-kernfs -e -0 / 2> /dev/null || echo '[]' > "$DISK_TREE_FILE"
