@@ -40,10 +40,10 @@ env:
 jobs:
   sh:
     if: ${{ inputs.shell == 'sh' }}
-    runs-on: &runs-on ${{ inputs.runs-on }}
-    environment: &environment ${{ inputs.environment }}
-    timeout-minutes: &timeout-minutes ${{ inputs.timeout-minutes }}
-    continue-on-error: &continue-on-error ${{ inputs.continue-on-error }}
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -53,10 +53,10 @@ jobs:
 
   bash:
     if: ${{ inputs.shell == 'bash' }}
-    runs-on: *runs-on
-    environment: *environment
-    timeout-minutes: *timeout-minutes
-    continue-on-error: *continue-on-error
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -66,10 +66,10 @@ jobs:
 
   pwsh:
     if: ${{ inputs.shell == 'pwsh' }}
-    runs-on: *runs-on
-    environment: *environment
-    timeout-minutes: *timeout-minutes
-    continue-on-error: *continue-on-error
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -79,10 +79,10 @@ jobs:
 
   cmd:
     if: ${{ inputs.shell == 'cmd' }}
-    runs-on: *runs-on
-    environment: *environment
-    timeout-minutes: *timeout-minutes
-    continue-on-error: *continue-on-error
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
