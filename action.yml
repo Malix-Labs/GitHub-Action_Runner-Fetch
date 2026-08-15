@@ -31,6 +31,8 @@ runs:
   steps:
     - id: runner-fetch
       shell: sh
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: "'${{ github.action_path }}/src/fetch.sh'"
     - uses: actions/upload-artifact@v7
       with:
