@@ -14,22 +14,30 @@ on:
         type: string
 
 jobs:
-  eval:
+  sh:
+    if: ${{ inputs.shell == 'sh' }}
     runs-on: ${{ inputs.runner }}
     steps:
-      - if: ${{ inputs.shell == 'bash' }}
-        run: ${{ inputs.script }}
-        shell: bash
-
-      - if: ${{ inputs.shell == 'pwsh' }}
-        run: ${{ inputs.script }}
-        shell: pwsh
-
-      - if: ${{ inputs.shell == 'cmd' }}
-        run: ${{ inputs.script }}
-        shell: cmd
-
-      - if: ${{ inputs.shell == 'sh' }}
-        run: ${{ inputs.script }}
+      - run: ${{ inputs.script }}
         shell: sh
 
+  bash:
+    if: ${{ inputs.shell == 'bash' }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - run: ${{ inputs.script }}
+        shell: bash
+
+  pwsh:
+    if: ${{ inputs.shell == 'pwsh' }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - run: ${{ inputs.script }}
+        shell: pwsh
+
+  cmd:
+    if: ${{ inputs.shell == 'cmd' }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - run: ${{ inputs.script }}
+        shell: cmd
