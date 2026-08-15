@@ -38,8 +38,7 @@ jobs:
   sh:
     if: ${{ inputs.shell == 'sh' }}
     runs-on: ${{ inputs.runs-on }}
-    environment:
-      name: ${{ inputs.environment }}
+    environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
@@ -51,8 +50,7 @@ jobs:
   bash:
     if: ${{ inputs.shell == 'bash' }}
     runs-on: ${{ inputs.runs-on }}
-    environment:
-      name: ${{ inputs.environment }}
+    environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
@@ -64,8 +62,7 @@ jobs:
   pwsh:
     if: ${{ inputs.shell == 'pwsh' }}
     runs-on: ${{ inputs.runs-on }}
-    environment:
-      name: ${{ inputs.environment }}
+    environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
@@ -77,8 +74,7 @@ jobs:
   cmd:
     if: ${{ inputs.shell == 'cmd' }}
     runs-on: ${{ inputs.runs-on }}
-    environment:
-      name: ${{ inputs.environment }}
+    environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
