@@ -13,6 +13,9 @@ on:
         required: true
         type: string
 
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
 jobs:
   sh:
     if: ${{ inputs.shell == 'sh' }}
