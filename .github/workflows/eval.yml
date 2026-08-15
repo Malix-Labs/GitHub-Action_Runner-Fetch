@@ -40,7 +40,7 @@ jobs:
     if: ${{ inputs.shell == 'sh' }}
     runs-on: ${{ inputs.runs-on }}
     # environment: ${{ inputs.environment }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    timeout-minutes: ${{ fromJSON(inputs.timeout-minutes) }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
@@ -52,7 +52,7 @@ jobs:
     if: ${{ inputs.shell == 'bash' }}
     runs-on: ${{ inputs.runs-on }}
     # environment: ${{ inputs.environment }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    timeout-minutes: ${{ fromJSON(inputs.timeout-minutes) }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
@@ -64,7 +64,7 @@ jobs:
     if: ${{ inputs.shell == 'pwsh' }}
     runs-on: ${{ inputs.runs-on }}
     # environment: ${{ inputs.environment }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    timeout-minutes: ${{ fromJSON(inputs.timeout-minutes) }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
@@ -76,7 +76,7 @@ jobs:
     if: ${{ inputs.shell == 'cmd' }}
     runs-on: ${{ inputs.runs-on }}
     # environment: ${{ inputs.environment }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    timeout-minutes: ${{ fromJSON(inputs.timeout-minutes) }}
     continue-on-error: ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
