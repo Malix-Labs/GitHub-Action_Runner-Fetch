@@ -3,14 +3,17 @@ name: Eval
 on:
   workflow_dispatch:
     inputs:
-      runner:
+      runs-on:
         required: true
         type: string
       shell:
         default: bash
         type: string
-      script:
+      run:
         required: true
+        type: string
+      environment:
+        required: false
         type: string
 
 env:
@@ -19,28 +22,32 @@ env:
 jobs:
   sh:
     if: ${{ inputs.shell == 'sh' }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     steps:
-      - run: ${{ inputs.script }}
+      - run: ${{ inputs.run }}
         shell: sh
 
   bash:
     if: ${{ inputs.shell == 'bash' }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     steps:
-      - run: ${{ inputs.script }}
+      - run: ${{ inputs.run }}
         shell: bash
 
   pwsh:
     if: ${{ inputs.shell == 'pwsh' }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     steps:
-      - run: ${{ inputs.script }}
+      - run: ${{ inputs.run }}
         shell: pwsh
 
   cmd:
     if: ${{ inputs.shell == 'cmd' }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     steps:
-      - run: ${{ inputs.script }}
+      - run: ${{ inputs.run }}
         shell: cmd
