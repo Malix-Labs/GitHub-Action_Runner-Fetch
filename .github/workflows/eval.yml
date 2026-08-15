@@ -44,12 +44,14 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: sh
-        working-directory: ${{ inputs.working-directory || (inputs.checkout && '.' || '') }}
 
   bash:
     if: ${{ inputs.shell == 'bash' }}
@@ -57,12 +59,14 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: bash
-        working-directory: ${{ inputs.working-directory || (inputs.checkout && '.' || '') }}
 
   pwsh:
     if: ${{ inputs.shell == 'pwsh' }}
@@ -70,12 +74,14 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: pwsh
-        working-directory: ${{ inputs.working-directory || (inputs.checkout && '.' || '') }}
 
   cmd:
     if: ${{ inputs.shell == 'cmd' }}
@@ -83,9 +89,11 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: cmd
-        working-directory: ${{ inputs.working-directory || (inputs.checkout && '.' || '') }}
