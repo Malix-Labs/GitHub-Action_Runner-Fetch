@@ -8,11 +8,11 @@ DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 TARGET_OS="${RUNNER_OS:-Linux}"
 
 if ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${OUT_DIR}/dust.exe" ]; then
-  DUST_TAG=$(curl -sfL https://api.github.com/repos/bootandy/dust/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
+  DUST_TAG=$(curl -sfL --retry 5 --retry-all-errors https://api.github.com/repos/bootandy/dust/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
   case "$TARGET_OS" in
-  "Linux") curl -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
-  "macOS") curl -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
-  "Windows") curl.exe -sfL "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" && /c/Windows/System32/tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" && mv "${OUT_DIR}"/dust-*/dust.exe "${OUT_DIR}/dust.exe" ;;
+  "Linux") curl -sfL --retry 5 --retry-all-errors "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
+  "macOS") curl -sfL --retry 5 --retry-all-errors "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
+  "Windows") curl.exe -sfL --retry 5 --retry-all-errors "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" && /c/Windows/System32/tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" && mv "${OUT_DIR}"/dust-*/dust.exe "${OUT_DIR}/dust.exe" ;;
   esac
 fi
 
