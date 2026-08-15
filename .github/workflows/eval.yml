@@ -1,6 +1,6 @@
 name: Eval
 
-run-name: ${{ inputs.run-name || github.workflow }}
+run-name: ${{ inputs.run-name != '' && inputs.run-name || github.workflow }}
 
 on:
   workflow_dispatch:
