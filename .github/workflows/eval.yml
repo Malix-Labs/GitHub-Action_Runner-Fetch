@@ -37,16 +37,13 @@ env:
   GITHUB_TOKEN: ${{ github.token }}
   VARS_JSON: ${{ toJSON(vars) }}
 
-x-job-template: &job-template
-  runs-on: ${{ inputs.runs-on }}
-  environment: ${{ inputs.environment }}
-  timeout-minutes: ${{ inputs.timeout-minutes }}
-  continue-on-error: ${{ inputs.continue-on-error }}
-
 jobs:
   sh:
-    <<: *job-template
     if: ${{ inputs.shell == 'sh' }}
+    runs-on: &runs-on ${{ inputs.runs-on }}
+    environment: &environment ${{ inputs.environment }}
+    timeout-minutes: &timeout-minutes ${{ inputs.timeout-minutes }}
+    continue-on-error: &continue-on-error ${{ inputs.continue-on-error }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -55,8 +52,11 @@ jobs:
         working-directory: ${{ inputs.working-directory || '.' }}
 
   bash:
-    <<: *job-template
     if: ${{ inputs.shell == 'bash' }}
+    runs-on: *runs-on
+    environment: *environment
+    timeout-minutes: *timeout-minutes
+    continue-on-error: *continue-on-error
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -65,8 +65,11 @@ jobs:
         working-directory: ${{ inputs.working-directory || '.' }}
 
   pwsh:
-    <<: *job-template
     if: ${{ inputs.shell == 'pwsh' }}
+    runs-on: *runs-on
+    environment: *environment
+    timeout-minutes: *timeout-minutes
+    continue-on-error: *continue-on-error
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -75,8 +78,11 @@ jobs:
         working-directory: ${{ inputs.working-directory || '.' }}
 
   cmd:
-    <<: *job-template
     if: ${{ inputs.shell == 'cmd' }}
+    runs-on: *runs-on
+    environment: *environment
+    timeout-minutes: *timeout-minutes
+    continue-on-error: *continue-on-error
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
