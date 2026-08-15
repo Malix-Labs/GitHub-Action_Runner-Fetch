@@ -18,6 +18,7 @@ on:
 
 env:
   GITHUB_TOKEN: ${{ github.token }}
+  VARS_JSON: ${{ toJSON(vars) }}
 
 jobs:
   sh:
