@@ -23,9 +23,6 @@ on:
       timeout-minutes:
         default: 360
         type: number
-      working-directory:
-        required: false
-        type: string
       continue-on-error:
         default: false
         type: boolean
@@ -44,9 +41,6 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -59,9 +53,6 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -74,9 +65,6 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
@@ -89,9 +77,6 @@ jobs:
     environment: ${{ inputs.environment }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     continue-on-error: ${{ inputs.continue-on-error }}
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
     steps:
       - if: ${{ inputs.checkout }}
         uses: actions/checkout@v7
