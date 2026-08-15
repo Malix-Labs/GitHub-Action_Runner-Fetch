@@ -1,5 +1,7 @@
 name: Eval
 
+run-name: ${{ inputs.run-name }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -15,40 +17,69 @@ on:
       environment:
         required: false
         type: string
+      checkout:
+        default: false
+        type: boolean
+      timeout-minutes:
+        default: 360
+        type: number
+      working-directory:
+        required: false
+        type: string
+      continue-on-error:
+        default: false
+        type: boolean
+      run-name:
+        required: false
+        type: string
 
 env:
   GITHUB_TOKEN: ${{ github.token }}
   VARS_JSON: ${{ toJSON(vars) }}
 
+x-job-template: &job-template
+  runs-on: ${{ inputs.runs-on }}
+  environment: ${{ inputs.environment }}
+  timeout-minutes: ${{ inputs.timeout-minutes }}
+  continue-on-error: ${{ inputs.continue-on-error }}
+
 jobs:
   sh:
+    <<: *job-template
     if: ${{ inputs.shell == 'sh' }}
-    runs-on: ${{ inputs.runs-on }}
-    environment: ${{ inputs.environment }}
     steps:
+      - if: ${{ inputs.checkout }}
+        uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: sh
+        working-directory: ${{ inputs.working-directory || '.' }}
 
   bash:
+    <<: *job-template
     if: ${{ inputs.shell == 'bash' }}
-    runs-on: ${{ inputs.runs-on }}
-    environment: ${{ inputs.environment }}
     steps:
+      - if: ${{ inputs.checkout }}
+        uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: bash
+        working-directory: ${{ inputs.working-directory || '.' }}
 
   pwsh:
+    <<: *job-template
     if: ${{ inputs.shell == 'pwsh' }}
-    runs-on: ${{ inputs.runs-on }}
-    environment: ${{ inputs.environment }}
     steps:
+      - if: ${{ inputs.checkout }}
+        uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: pwsh
+        working-directory: ${{ inputs.working-directory || '.' }}
 
   cmd:
+    <<: *job-template
     if: ${{ inputs.shell == 'cmd' }}
-    runs-on: ${{ inputs.runs-on }}
-    environment: ${{ inputs.environment }}
     steps:
+      - if: ${{ inputs.checkout }}
+        uses: actions/checkout@v7
       - run: ${{ inputs.run }}
         shell: cmd
+        working-directory: ${{ inputs.working-directory || '.' }}
