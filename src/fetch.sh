@@ -19,7 +19,6 @@ fi
 DUST_BIN="dust"
 [ -f "${OUT_DIR}/dust" ] && DUST_BIN="${OUT_DIR}/dust"
 [ -f "${OUT_DIR}/dust.exe" ] && DUST_BIN="${OUT_DIR}/dust.exe"
-[ -w "$DUST_BIN" ] && chmod +x "$DUST_BIN"
 
 TARGET_ROOT="/"
 
