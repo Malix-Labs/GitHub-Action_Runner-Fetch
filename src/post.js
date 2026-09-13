@@ -1,6 +1,11 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
+// Normalize RUNNER_TEMP to forward slashes across platforms (especially Windows)
+if (process.env.RUNNER_TEMP) {
+  process.env.RUNNER_TEMP = process.env.RUNNER_TEMP.replace(/\\/g, '/');
+}
+
 const summaryScript = path.join(__dirname, 'summary.sh');
 const result = spawnSync('sh', [summaryScript], {
   stdio: 'inherit',

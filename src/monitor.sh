@@ -99,10 +99,15 @@ while :; do
     DISK_FREE_MB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4/1024)}' || echo 0)
 
     # Memory using vm_stat
-    PAGES_FREE=$(vm_stat 2>/dev/null | awk '/Pages free:/ {gsub("\\.",""); print $3}' || echo 0)
-    PAGES_SPEC=$(vm_stat 2>/dev/null | awk '/Pages speculative:/ {gsub("\\.",""); print $3}' || echo 0)
-    PAGE_SIZE=$(vm_stat 2>/dev/null | awk '/page size of/ {print $8}' || echo 4096)
+    VM_OUT=$(vm_stat 2>/dev/null || echo "")
+    PAGES_FREE=$(echo "$VM_OUT" | awk '/Pages free:/ {print $3}' | tr -d '.\r' || echo 0)
+    PAGES_SPEC=$(echo "$VM_OUT" | awk '/Pages speculative:/ {print $3}' | tr -d '.\r' || echo 0)
+    PAGE_SIZE=$(echo "$VM_OUT" | awk '/page size of/ {print $8}' | tr -d '.\r' || echo 4096)
+    PAGES_FREE=${PAGES_FREE:-0}
+    PAGES_SPEC=${PAGES_SPEC:-0}
+    PAGE_SIZE=${PAGE_SIZE:-4096}
     TOTAL_MEM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+    TOTAL_MEM_BYTES=${TOTAL_MEM_BYTES:-0}
 
     AVAIL_BYTES=$(((PAGES_FREE + PAGES_SPEC) * PAGE_SIZE))
     MEM_AVAIL_MB=$((AVAIL_BYTES / 1048576))
@@ -111,13 +116,32 @@ while :; do
       MEM_USED_MB=$((TOTAL_MEM_MB - MEM_AVAIL_MB))
     fi
 
-    # CPU usage via top sample
-    CPU_TOTAL=$(top -l 1 -n 0 2>/dev/null | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
+    # CPU sample
+    CPU_SAMPLE=$(top -l 1 -n 0 2>/dev/null | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
+    CPU_TOTAL=${CPU_SAMPLE:-0}
     ;;
 
   "Windows")
     # Windows / MINGW / MSYS environment
     DISK_FREE_MB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4/1024)}' || echo 0)
+
+    # In MSYS2 / Git Bash, /proc/meminfo is emulated
+    if [ -r /proc/meminfo ]; then
+      MEM_TOTAL_KB=$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+      MEM_AVAIL_KB=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || awk '/MemFree:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+      MEM_TOTAL_KB=${MEM_TOTAL_KB:-0}
+      MEM_AVAIL_KB=${MEM_AVAIL_KB:-0}
+      if [ "$MEM_TOTAL_KB" -gt 0 ]; then
+        MEM_USED_KB=$((MEM_TOTAL_KB - MEM_AVAIL_KB))
+        MEM_USED_MB=$((MEM_USED_KB / 1024))
+        MEM_AVAIL_MB=$((MEM_AVAIL_KB / 1024))
+      fi
+    fi
+
+    if [ -r /proc/loadavg ]; then
+      CPU_LOAD=$(awk '{print int($1 * 100)}' /proc/loadavg 2>/dev/null || echo 0)
+      CPU_TOTAL=${CPU_LOAD:-0}
+    fi
     ;;
   esac
 

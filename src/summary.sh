@@ -13,6 +13,9 @@ if [ -f "$PID_FILE" ]; then
   MONITOR_PID=$(cat "$PID_FILE" 2>/dev/null || echo "")
   if [ -n "$MONITOR_PID" ]; then
     kill -TERM "$MONITOR_PID" 2>/dev/null || true
+    if [ "${RUNNER_OS:-Linux}" = "Windows" ]; then
+      taskkill //F //PID "$MONITOR_PID" >/dev/null 2>&1 || true
+    fi
   fi
   rm -f "$PID_FILE"
 fi
@@ -25,7 +28,7 @@ if [ "${INPUT_MONITOR:-true}" = "false" ]; then
 fi
 
 if [ ! -f "$SAMPLES_FILE" ] || [ "$(wc -l <"$SAMPLES_FILE")" -le 1 ]; then
-  echo "::warning::No runner telemetry samples were collected."
+  echo "Runner telemetry: no samples collected (job completed before sample interval)."
   exit 0
 fi
 

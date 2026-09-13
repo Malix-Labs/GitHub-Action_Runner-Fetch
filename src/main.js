@@ -1,7 +1,29 @@
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 
+// Normalize RUNNER_TEMP to forward slashes across platforms (especially Windows)
+if (process.env.RUNNER_TEMP) {
+  process.env.RUNNER_TEMP = process.env.RUNNER_TEMP.replace(/\\/g, '/');
+}
+
+const monitorScript = path.join(__dirname, 'monitor.sh');
 const fetchScript = path.join(__dirname, 'fetch.sh');
+
+const enableMonitor = process.env.INPUT_MONITOR !== 'false';
+
+if (enableMonitor) {
+  try {
+    const monitorProc = spawn('sh', [monitorScript], {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    });
+    monitorProc.unref();
+  } catch (err) {
+    console.warn('Failed to start monitor daemon:', err.message);
+  }
+}
+
 const result = spawnSync('sh', [fetchScript], {
   stdio: 'inherit',
   env: process.env,
@@ -13,3 +35,4 @@ if (result.error) {
 }
 
 process.exit(result.status !== null ? result.status : 1);
+

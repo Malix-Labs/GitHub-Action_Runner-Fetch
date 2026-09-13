@@ -1,31 +1,45 @@
 #!/bin/sh
 set -euC
 
-SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 mkdir -p "$OUT_DIR"
 DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 
 TARGET_OS="${RUNNER_OS:-Linux}"
 ENABLE_DISK_TREE="${INPUT_DISK_TREE:-true}"
-ENABLE_MONITOR="${INPUT_MONITOR:-true}"
-
-if [ "$ENABLE_MONITOR" = "true" ]; then
-  nohup sh "${SCRIPT_DIR}/monitor.sh" >/dev/null 2>&1 &
-fi
 
 if [ "$ENABLE_DISK_TREE" = "true" ] && ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${OUT_DIR}/dust.exe" ]; then
-  DUST_TAG=$(curl -sfL --retry 5 --retry-all-errors ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/bootandy/dust/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
+  # 1. Try web redirect to avoid GitHub API unauthenticated rate limits (60 req/hr)
+  DUST_TAG=$(curl -sI https://github.com/bootandy/dust/releases/latest 2>/dev/null | awk -F'/tag/' '/location:/ {gsub("\r",""); print $2}' || true)
+  # 2. Fall back to GitHub API
+  if [ -z "$DUST_TAG" ]; then
+    DUST_TAG=$(curl -sfL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/bootandy/dust/releases/latest 2>/dev/null | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4 || true)
+  fi
+  # 3. Fall back to known stable version
+  DUST_TAG="${DUST_TAG:-v1.2.5}"
+
+  ARCH="${RUNNER_ARCH:-$(uname -m)}"
+  case "$ARCH" in
+  arm64 | aarch64 | ARM64) DUST_ARCH="aarch64" ;;
+  *) DUST_ARCH="x86_64" ;;
+  esac
+
   case "$TARGET_OS" in
-  "Linux") curl -sfL --retry 5 --retry-all-errors "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
-  "macOS") curl -sfL --retry 5 --retry-all-errors "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-apple-darwin.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
-  "Windows") curl.exe -sfL --retry 5 --retry-all-errors "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-x86_64-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" && /c/Windows/System32/tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" && mv "${OUT_DIR}"/dust-*/dust.exe "${OUT_DIR}/dust.exe" ;;
+  "Linux") curl -sfL --retry 3 "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-${DUST_ARCH}-unknown-linux-musl.tar.gz" 2>/dev/null | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
+  "macOS") curl -sfL --retry 3 "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-${DUST_ARCH}-apple-darwin.tar.gz" 2>/dev/null | tar -xz --strip-components=1 -C "$OUT_DIR" 2>/dev/null || true ;;
+  "Windows") curl.exe -sfL --retry 3 "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-${DUST_ARCH}-pc-windows-msvc.zip" -o "${OUT_DIR}/dust.zip" 2>/dev/null && /c/Windows/System32/tar.exe -xf "${OUT_DIR}/dust.zip" -C "$OUT_DIR" 2>/dev/null && mv "${OUT_DIR}"/dust-*/dust.exe "${OUT_DIR}/dust.exe" 2>/dev/null || true ;;
   esac
 fi
 
-DUST_BIN="dust"
-[ -f "${OUT_DIR}/dust" ] && DUST_BIN="${OUT_DIR}/dust"
-[ -f "${OUT_DIR}/dust.exe" ] && DUST_BIN="${OUT_DIR}/dust.exe"
+DUST_BIN=""
+if command -v dust >/dev/null 2>&1; then
+  DUST_BIN="dust"
+elif [ -f "${OUT_DIR}/dust" ]; then
+  chmod +x "${OUT_DIR}/dust" 2>/dev/null || true
+  DUST_BIN="${OUT_DIR}/dust"
+elif [ -f "${OUT_DIR}/dust.exe" ]; then
+  DUST_BIN="${OUT_DIR}/dust.exe"
+fi
 
 TARGET_ROOT="/"
 
@@ -108,14 +122,15 @@ esac
 ARTIFACT_NAME="disk-tree-${TARGET_OS}${OS_LABEL:+-${OS_LABEL}}-${RUNNER_ARCH:-$(uname -m)}"
 
 FETCH_ERR=0
-if [ "$ENABLE_DISK_TREE" = "true" ]; then
+if [ "$ENABLE_DISK_TREE" = "true" ] && [ -n "$DUST_BIN" ]; then
   rm -f "$DISK_TREE_FILE"
-  "$DUST_BIN" -P -j -d 1000 -n 10000000 "$TARGET_ROOT" >|"$DISK_TREE_FILE" || FETCH_ERR=$?
-  if [ ! -s "$DISK_TREE_FILE" ]; then
-    echo "::error::disk_tree.json is missing or empty (dust exit code: $FETCH_ERR)" >&2
-    exit 1
+  "$DUST_BIN" -P -j -d 1000 -n 10000000 "$TARGET_ROOT" >|"$DISK_TREE_FILE" 2>/dev/null || FETCH_ERR=$?
+fi
+
+if [ ! -s "$DISK_TREE_FILE" ]; then
+  if [ "$ENABLE_DISK_TREE" = "true" ]; then
+    echo "::warning::disk_tree.json was not generated (dust status: ${FETCH_ERR}); skipping disk tree artifact."
   fi
-else
   DISK_TREE_FILE=""
 fi
 
