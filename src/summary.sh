@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -euC
 
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 PID_FILE="${OUT_DIR}/monitor.pid"
@@ -140,7 +140,7 @@ SUMMARY_JSON=$(printf '{"duration_seconds":%d,"samples_count":%d,"cpu":{"average
   "$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
   "$DISK_CONSUMED_MB" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
-echo "$SUMMARY_JSON" >"$SUMMARY_FILE"
+echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
 
 # 5. Generate OpenMetrics / Prometheus export (.prom)
 if [ "${INPUT_EXPORT_PROMETHEUS:-true}" = "true" ]; then
@@ -171,7 +171,7 @@ if [ "${INPUT_EXPORT_PROMETHEUS:-true}" = "true" ]; then
 		printf "runner_memory_available_bytes{runner=\"%s\"} %d %s\n", rname, ($8 * 1048576), ts
 		printf "runner_disk_free_bytes{runner=\"%s\",mount=\"/\"} %d %s\n", rname, ($9 * 1048576), ts
 	}
-	' "$SAMPLES_FILE" >"$PROM_FILE"
+	' "$SAMPLES_FILE" >|"$PROM_FILE"
 fi
 
 # 6. Generate lightweight SVG Sparkline Charts
@@ -204,7 +204,7 @@ MEM_POLYLINE=$(echo "$MEM_POINTS" | awk '
 	}
 }')
 
-cat <<EOF >"$SVG_FILE"
+cat <<EOF >|"$SVG_FILE"
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 100" width="100%" height="100">
   <rect width="500" height="100" fill="#0d1117" rx="6"/>
   <line x1="10" y1="15" x2="490" y2="15" stroke="#30363d" stroke-dasharray="2"/>

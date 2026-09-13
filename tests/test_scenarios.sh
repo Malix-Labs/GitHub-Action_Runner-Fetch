@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -euC
 
 REPO_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 TEST_DIR="${RUNNER_TEMP:-/tmp}/test-runner-suite-$$"

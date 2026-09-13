@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -euC
 
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 mkdir -p "$OUT_DIR"
@@ -7,7 +7,7 @@ PID_FILE="${OUT_DIR}/monitor.pid"
 SAMPLES_FILE="${OUT_DIR}/samples.tsv"
 SAMPLE_INTERVAL="${INPUT_SAMPLE_INTERVAL:-2}"
 
-echo "$$" >"$PID_FILE"
+echo "$$" >|"$PID_FILE"
 
 # Clean exit on termination signals
 trap 'exit 0' TERM INT QUIT HUP
@@ -16,7 +16,7 @@ TARGET_OS="${RUNNER_OS:-Linux}"
 
 # Write TSV header if file does not exist
 if [ ! -f "$SAMPLES_FILE" ]; then
-  printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\n" >"$SAMPLES_FILE"
+  printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\n" >|"$SAMPLES_FILE"
 fi
 
 PREV_USER=0

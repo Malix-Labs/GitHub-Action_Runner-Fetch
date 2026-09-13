@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -euC
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
@@ -110,7 +110,7 @@ ARTIFACT_NAME="disk-tree-${TARGET_OS}${OS_LABEL:+-${OS_LABEL}}-${RUNNER_ARCH:-$(
 FETCH_ERR=0
 if [ "$ENABLE_DISK_TREE" = "true" ]; then
   rm -f "$DISK_TREE_FILE"
-  "$DUST_BIN" -P -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" || FETCH_ERR=$?
+  "$DUST_BIN" -P -j -d 1000 -n 10000000 "$TARGET_ROOT" >|"$DISK_TREE_FILE" || FETCH_ERR=$?
   if [ ! -s "$DISK_TREE_FILE" ]; then
     echo "::error::disk_tree.json is missing or empty (dust exit code: $FETCH_ERR)" >&2
     exit 1
