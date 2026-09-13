@@ -9,7 +9,8 @@ const result = spawnSync('sh', [summaryScript], {
 
 if (result.error) {
   console.error('Failed to start summary.sh:', result.error);
-  process.exit(1);
+} else if (result.status !== 0) {
+  console.error(`summary.sh exited with code ${result.status}`);
 }
 
-process.exit(result.status !== null ? result.status : 1);
+process.exit(0);

@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euC
+set -eu
 
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 mkdir -p "$OUT_DIR"
@@ -83,9 +83,14 @@ while :; do
     # 3. Disk free on root filesystem in MB
     DISK_FREE_MB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4/1024)}' || echo 0)
 
-    # 4. Cgroup v2 OOM kills counter
-    if [ -r /sys/fs/cgroup/memory.events ]; then
+    # 4. OOM kills counter (cgroup v2 process scope, cgroup v2 root, or /proc/vmstat)
+    CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
+    if [ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ]; then
+      OOM_KILLS=$(awk '/oom_kill / {print $2}' "/sys/fs/cgroup${CGPATH}/memory.events" 2>/dev/null || echo 0)
+    elif [ -r /sys/fs/cgroup/memory.events ]; then
       OOM_KILLS=$(awk '/oom_kill / {print $2}' /sys/fs/cgroup/memory.events 2>/dev/null || echo 0)
+    elif [ -r /proc/vmstat ]; then
+      OOM_KILLS=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
     fi
     ;;
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euC
+set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
@@ -9,6 +9,10 @@ DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 TARGET_OS="${RUNNER_OS:-Linux}"
 ENABLE_DISK_TREE="${INPUT_DISK_TREE:-true}"
 ENABLE_MONITOR="${INPUT_MONITOR:-true}"
+
+if [ "$ENABLE_MONITOR" = "true" ]; then
+  nohup sh "${SCRIPT_DIR}/monitor.sh" >/dev/null 2>&1 &
+fi
 
 if [ "$ENABLE_DISK_TREE" = "true" ] && ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${OUT_DIR}/dust.exe" ]; then
   DUST_TAG=$(curl -sfL --retry 5 --retry-all-errors ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/bootandy/dust/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
@@ -37,24 +41,28 @@ case "$TARGET_OS" in
   OS_PRETTY="${PRETTY_NAME:-Linux}"
   OS_ID="${ID:-linux}"
 
-  TOOLCACHE_JSON=$(find "${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}" -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
-  PACKAGES_JSON=$(dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
-
-  ENV_JSON=$(jq -c -n \
-    --arg os "Linux" \
-    --arg os_name "$OS_NAME" \
-    --arg os_version "$OS_VER" \
-    --arg os_codename "$OS_CODE" \
-    --arg os_pretty_name "$OS_PRETTY" \
-    --arg os_id "$OS_ID" \
-    --arg arch "${RUNNER_ARCH:-$(uname -m)}" \
-    --arg name "${RUNNER_NAME:-unknown}" \
-    --arg hostname "$(hostname)" \
-    --arg kernel "$(uname -r)" \
-    --arg uptime "$(awk '{print $1}' /proc/uptime 2>/dev/null || echo '0')" \
-    --argjson toolcache "$TOOLCACHE_JSON" \
-    --argjson packages "$PACKAGES_JSON" \
-    '{runner_os: $os, os_name: $os_name, os_version: $os_version, os_codename: $os_codename, os_pretty_name: $os_pretty_name, os_id: $os_id, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
+  if command -v jq >/dev/null 2>&1; then
+    TOOLCACHE_JSON=$(find "${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}" -mindepth 2 -maxdepth 2 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+    PACKAGES_JSON=$(dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo '[]')
+    ENV_JSON=$(jq -c -n \
+      --arg os "Linux" \
+      --arg os_name "$OS_NAME" \
+      --arg os_version "$OS_VER" \
+      --arg os_codename "$OS_CODE" \
+      --arg os_pretty_name "$OS_PRETTY" \
+      --arg os_id "$OS_ID" \
+      --arg arch "${RUNNER_ARCH:-$(uname -m)}" \
+      --arg name "${RUNNER_NAME:-unknown}" \
+      --arg hostname "$(hostname)" \
+      --arg kernel "$(uname -r)" \
+      --arg uptime "$(awk '{print $1}' /proc/uptime 2>/dev/null || echo '0')" \
+      --argjson toolcache "$TOOLCACHE_JSON" \
+      --argjson packages "$PACKAGES_JSON" \
+      '{runner_os: $os, os_name: $os_name, os_version: $os_version, os_codename: $os_codename, os_pretty_name: $os_pretty_name, os_id: $os_id, runner_arch: $arch, runner_name: $name, hostname: $hostname, kernel: $kernel, uptime_seconds: $uptime, toolcache: $toolcache, packages: $packages}')
+  else
+    ENV_JSON=$(printf '{"runner_os":"Linux","os_name":"%s","os_version":"%s","runner_arch":"%s","runner_name":"%s","hostname":"%s","kernel":"%s","toolcache":[],"packages":[]}' \
+      "$OS_NAME" "$OS_VER" "${RUNNER_ARCH:-$(uname -m)}" "${RUNNER_NAME:-unknown}" "$(hostname)" "$(uname -r)")
+  fi
 
   STORAGE_JSON=$(lsblk -b -O --json 2>/dev/null || echo '{"blockdevices":[]}')
   CPU_JSON=$(lscpu -B --json 2>/dev/null || echo '{"lscpu":[]}')
@@ -122,8 +130,4 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
       echo "::endgroup::"
     fi
   done
-fi
-
-if [ "$ENABLE_MONITOR" = "true" ]; then
-  nohup "${SCRIPT_DIR}/monitor.sh" >/dev/null 2>&1 &
 fi

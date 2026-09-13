@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euC
+set -eu
 
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 PID_FILE="${OUT_DIR}/monitor.pid"
@@ -19,6 +19,10 @@ fi
 
 # Allow a moment for monitor to flush last write
 sleep 1
+
+if [ "${INPUT_MONITOR:-true}" = "false" ]; then
+  exit 0
+fi
 
 if [ ! -f "$SAMPLES_FILE" ] || [ "$(wc -l <"$SAMPLES_FILE")" -le 1 ]; then
   echo "::warning::No runner telemetry samples were collected."
@@ -94,15 +98,29 @@ OOM_DETAILS=""
 
 if [ "$OOM_COUNT" -gt 0 ]; then
   OOM_DETECTED="true"
-  OOM_DETAILS="Cgroup v2 recorded ${OOM_COUNT} process kill event(s)."
+  OOM_DETAILS="Kernel recorded ${OOM_COUNT} process kill event(s)."
 fi
 
 if [ "$OOM_DETECTED" = "false" ] && [ "$TARGET_OS" = "Linux" ]; then
-  if [ -r /sys/fs/cgroup/memory.events ]; then
+  CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
+  if [ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ]; then
+    CGROUP_OOM=$(awk '/oom_kill / {print $2}' "/sys/fs/cgroup${CGPATH}/memory.events" 2>/dev/null || echo 0)
+    if [ "$CGROUP_OOM" -gt 0 ]; then
+      OOM_DETECTED="true"
+      OOM_DETAILS="Cgroup memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
+    fi
+  elif [ -r /sys/fs/cgroup/memory.events ]; then
     CGROUP_OOM=$(awk '/oom_kill / {print $2}' /sys/fs/cgroup/memory.events 2>/dev/null || echo 0)
     if [ "$CGROUP_OOM" -gt 0 ]; then
       OOM_DETECTED="true"
       OOM_DETAILS="Cgroup v2 memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
+    fi
+  fi
+  if [ "$OOM_DETECTED" = "false" ] && [ -r /proc/vmstat ]; then
+    VMSTAT_OOM=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
+    if [ "$VMSTAT_OOM" -gt 0 ]; then
+      OOM_DETECTED="true"
+      OOM_DETAILS="/proc/vmstat recorded ${VMSTAT_OOM} kernel OOM kill(s)."
     fi
   fi
   if [ "$OOM_DETECTED" = "false" ] && command -v dmesg >/dev/null 2>&1; then
@@ -115,11 +133,12 @@ if [ "$OOM_DETECTED" = "false" ] && [ "$TARGET_OS" = "Linux" ]; then
 fi
 
 # 4. Generate summary.json (Single Source of Truth)
+ESCAPED_OOM_DETAILS=$(printf '%s' "$OOM_DETAILS" | tr '\r\n\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
 SUMMARY_JSON=$(printf '{"duration_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"disk":{"consumed_mb":%d},"oom_detected":%s,"oom_details":"%s"}' \
   "$DURATION_SEC" "$SAMPLE_COUNT" \
   "$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
   "$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
-  "$DISK_CONSUMED_MB" "$OOM_DETECTED" "$OOM_DETAILS")
+  "$DISK_CONSUMED_MB" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
 echo "$SUMMARY_JSON" >"$SUMMARY_FILE"
 
