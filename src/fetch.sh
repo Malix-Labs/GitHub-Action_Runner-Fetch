@@ -1,13 +1,16 @@
 #!/bin/sh
 set -euC
 
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
 mkdir -p "$OUT_DIR"
 DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 
 TARGET_OS="${RUNNER_OS:-Linux}"
+ENABLE_DISK_TREE="${INPUT_DISK_TREE:-true}"
+ENABLE_MONITOR="${INPUT_MONITOR:-true}"
 
-if ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${OUT_DIR}/dust.exe" ]; then
+if [ "$ENABLE_DISK_TREE" = "true" ] && ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${OUT_DIR}/dust.exe" ]; then
   DUST_TAG=$(curl -sfL --retry 5 --retry-all-errors ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/bootandy/dust/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4)
   case "$TARGET_OS" in
   "Linux") curl -sfL --retry 5 --retry-all-errors "https://github.com/bootandy/dust/releases/download/${DUST_TAG}/dust-${DUST_TAG}-$(uname -m)-unknown-linux-musl.tar.gz" | tar -xz --strip-components=1 -C "$OUT_DIR" ;;
@@ -97,8 +100,16 @@ esac
 ARTIFACT_NAME="disk-tree-${TARGET_OS}${OS_LABEL:+-${OS_LABEL}}-${RUNNER_ARCH:-$(uname -m)}"
 
 FETCH_ERR=0
-rm -f "$DISK_TREE_FILE"
-"$DUST_BIN" -P -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" || FETCH_ERR=$?
+if [ "$ENABLE_DISK_TREE" = "true" ]; then
+  rm -f "$DISK_TREE_FILE"
+  "$DUST_BIN" -P -j -d 1000 -n 10000000 "$TARGET_ROOT" >"$DISK_TREE_FILE" || FETCH_ERR=$?
+  if [ ! -s "$DISK_TREE_FILE" ]; then
+    echo "::error::disk_tree.json is missing or empty (dust exit code: $FETCH_ERR)" >&2
+    exit 1
+  fi
+else
+  DISK_TREE_FILE=""
+fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}" "disk_tree_path:${DISK_TREE_FILE}" "artifact_name:${ARTIFACT_NAME}"; do
@@ -113,7 +124,6 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
   done
 fi
 
-if [ ! -s "$DISK_TREE_FILE" ]; then
-  echo "::error::disk_tree.json is missing or empty (dust exit code: $FETCH_ERR)" >&2
-  exit 1
+if [ "$ENABLE_MONITOR" = "true" ]; then
+  nohup "${SCRIPT_DIR}/monitor.sh" >/dev/null 2>&1 &
 fi
