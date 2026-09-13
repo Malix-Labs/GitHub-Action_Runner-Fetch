@@ -74,6 +74,22 @@
 
           checks = {
             formatting = config.treefmt.build.check self;
+            test-suite =
+              pkgs.runCommand "test-suite"
+                {
+                  nativeBuildInputs = [
+                    pkgs.nodejs_24
+                    pkgs.gawk
+                    pkgs.coreutils
+                  ];
+                }
+                ''
+                  export HOME=$TMPDIR
+                  cp -r ${self}/* .
+                  chmod -R +w .
+                  ./tests/test_scenarios.sh
+                  touch $out
+                '';
           };
         };
     };
