@@ -32,7 +32,6 @@
         {
           config,
           pkgs,
-          system,
           ...
         }:
         {
@@ -43,10 +42,32 @@
 
           pre-commit.settings.hooks = {
             treefmt.enable = true;
-            shfmt.enable = true;
             shellcheck.enable = true;
             statix.enable = true;
             deadnix.enable = true;
+            markdownlint = {
+              enable = true;
+              excludes = [
+                "^LICENSE\\.md$"
+                "^\\.github/.*"
+              ];
+              settings.configuration = {
+                MD013 = false;
+                MD026 = false;
+                MD034 = false;
+                MD041 = false;
+                MD012 = false;
+              };
+            };
+          };
+
+          packages.test-runner = pkgs.writeShellApplication {
+            name = "test-runner";
+            runtimeInputs = [ pkgs.gh ];
+            text = ''
+              gh workflow run fetch.yml --ref "$(git rev-parse --abbrev-ref HEAD)"
+              gh run watch
+            '';
           };
 
           devShells.default = config.pre-commit.devShell;
