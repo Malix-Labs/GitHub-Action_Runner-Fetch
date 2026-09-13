@@ -1,40 +1,55 @@
 name: "GitHub Action - Runner Fetch"
-description: "GitHub Action to Fetch Information of its Runner"
+description: "GitHub Action to Fetch Information and Monitor its Runner"
 author: "Alix Brunet (Malix)"
 
 branding:
   icon: cpu
   color: blue
 
+inputs:
+  monitor:
+    description: "Enable continuous background resource monitoring (CPU, RAM, Disk)."
+    required: false
+    default: "true"
+  disk-tree:
+    description: "Build recursive directory tree with dust."
+    required: false
+    default: "true"
+  sample-interval:
+    description: "Telemetry sampling interval in seconds."
+    required: false
+    default: "2"
+  export-prometheus:
+    description: "Generate standard OpenMetrics / Prometheus (.prom) metrics file."
+    required: false
+    default: "true"
+
 outputs:
   environment:
     description: "JSON document containing OS, distro, kernel, architecture, hostname, runner name, and uptime."
-    value: ${{ steps.runner-fetch.outputs.environment }}
   cpu:
     description: "JSON document containing lscpu architecture, cores, threads, and cache details."
-    value: ${{ steps.runner-fetch.outputs.cpu }}
   storage:
     description: "JSON document containing lsblk block devices, partitions, filesystem formats, total and free space."
-    value: ${{ steps.runner-fetch.outputs.storage }}
   hardware:
     description: "JSON document containing lshw system motherboard and RAM topology."
-    value: ${{ steps.runner-fetch.outputs.hardware }}
   disk_tree_path:
     description: "Path to the JSON file containing the full filesystem tree with directory and file sizes."
-    value: ${{ steps.runner-fetch.outputs.disk_tree_path }}
   artifact_name:
-    description: "Deterministic name of the uploaded disk tree artifact."
-    value: ${{ steps.runner-fetch.outputs.artifact_name }}
+    description: "Deterministic name of the disk tree artifact."
+  summary:
+    description: "JSON document containing aggregate resource utilization metrics and autopsy data."
+  peak_memory_mb:
+    description: "Peak RAM usage in megabytes during the job."
+  avg_cpu_percent:
+    description: "Average CPU utilization percentage during the job."
+  disk_consumed_mb:
+    description: "Net disk space consumed in megabytes during the job."
+  oom_detected:
+    description: "Boolean indicating whether a Linux kernel Out-Of-Memory (OOM) kill occurred."
 
 runs:
-  using: composite
-  steps:
-    - id: runner-fetch
-      shell: sh
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      run: "'${{ github.action_path }}/src/fetch.sh'"
-    - uses: actions/upload-artifact@v7
-      with:
-        name: ${{ steps.runner-fetch.outputs.artifact_name }}
-        path: ${{ steps.runner-fetch.outputs.disk_tree_path }}
+  using: "node24"
+  main: "src/main.js"
+  post: "src/post.js"
+  post-if: "always()"
