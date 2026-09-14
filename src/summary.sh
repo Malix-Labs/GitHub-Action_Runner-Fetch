@@ -10,26 +10,26 @@ CHART_FILE="${OUT_DIR}/chart.mermaid"
 
 # 1. Stop background monitor daemon if running
 if [ -f "$PID_FILE" ]; then
-  MONITOR_PID=$(cat "$PID_FILE" 2>/dev/null || echo "")
-  if [ -n "$MONITOR_PID" ]; then
-    kill -TERM "$MONITOR_PID" 2>/dev/null || true
-    if [ "${RUNNER_OS:-Linux}" = "Windows" ]; then
-      taskkill //F //PID "$MONITOR_PID" >/dev/null 2>&1 || true
-    fi
-  fi
-  rm -f "$PID_FILE"
+	MONITOR_PID=$(cat "$PID_FILE" 2>/dev/null || echo "")
+	if [ -n "$MONITOR_PID" ]; then
+		kill -TERM "$MONITOR_PID" 2>/dev/null || true
+		if [ "${RUNNER_OS:-Linux}" = "Windows" ]; then
+			taskkill //F //PID "$MONITOR_PID" >/dev/null 2>&1 || true
+		fi
+	fi
+	rm -f "$PID_FILE"
 fi
 
 # Allow a moment for monitor to flush last write
 sleep 1
 
 if [ "${INPUT_MONITOR:-true}" = "false" ]; then
-  exit 0
+	exit 0
 fi
 
 if [ ! -f "$SAMPLES_FILE" ] || [ "$(wc -l <"$SAMPLES_FILE")" -le 1 ]; then
-  echo "Runner telemetry: no samples collected (job completed before sample interval)."
-  exit 0
+	echo "Runner telemetry: no samples collected (job completed before sample interval)."
+	exit 0
 fi
 
 TARGET_OS="${RUNNER_OS:-Linux}"
@@ -185,8 +185,8 @@ END {
 }' "$SAMPLES_FILE")
 
 IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
-  MEM_INIT_MB MEM_PEAK_MB MEM_FINAL_MB MEM_TOTAL_MB MEM_PEAK_PCT \
-  DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE <<EOF
+	MEM_INIT_MB MEM_PEAK_MB MEM_FINAL_MB MEM_TOTAL_MB MEM_PEAK_PCT \
+	DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE <<EOF
 $STATS
 EOF
 
@@ -195,86 +195,84 @@ OOM_DETECTED="false"
 OOM_DETAILS=""
 
 if [ "$OOM_COUNT" -gt 0 ]; then
-  OOM_DETECTED="true"
-  OOM_DETAILS="Kernel recorded ${OOM_COUNT} process kill event(s)."
+	OOM_DETECTED="true"
+	OOM_DETAILS="Kernel recorded ${OOM_COUNT} process kill event(s)."
 fi
 
 if [ "$OOM_DETECTED" = "false" ] && [ "$TARGET_OS" = "Linux" ]; then
-  CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
-  if [ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ]; then
-    CGROUP_OOM=$(awk '/oom_kill / {print $2}' "/sys/fs/cgroup${CGPATH}/memory.events" 2>/dev/null || echo 0)
-    if [ "$CGROUP_OOM" -gt 0 ]; then
-      OOM_DETECTED="true"
-      OOM_DETAILS="Cgroup memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
-    fi
-  elif [ -r /sys/fs/cgroup/memory.events ]; then
-    CGROUP_OOM=$(awk '/oom_kill / {print $2}' /sys/fs/cgroup/memory.events 2>/dev/null || echo 0)
-    if [ "$CGROUP_OOM" -gt 0 ]; then
-      OOM_DETECTED="true"
-      OOM_DETAILS="Cgroup v2 memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
-    fi
-  fi
-  if [ "$OOM_DETECTED" = "false" ] && [ -r /proc/vmstat ]; then
-    VMSTAT_OOM=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
-    if [ "$VMSTAT_OOM" -gt 0 ]; then
-      OOM_DETECTED="true"
-      OOM_DETAILS="/proc/vmstat recorded ${VMSTAT_OOM} kernel OOM kill(s)."
-    fi
-  fi
-  if [ "$OOM_DETECTED" = "false" ] && command -v dmesg >/dev/null 2>&1; then
-    DMESG_OOM=$(dmesg 2>/dev/null | grep -iE 'killed process|out of memory: killed' | tail -n 1 || true)
-    if [ -n "$DMESG_OOM" ]; then
-      OOM_DETECTED="true"
-      OOM_DETAILS="${DMESG_OOM}"
-    fi
-  fi
+	CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
+	CG_EVENTS=""
+	[ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ] && CG_EVENTS="/sys/fs/cgroup${CGPATH}/memory.events"
+	[ -z "$CG_EVENTS" ] && [ -r /sys/fs/cgroup/memory.events ] && CG_EVENTS="/sys/fs/cgroup/memory.events"
+
+	if [ -n "$CG_EVENTS" ]; then
+		CGROUP_OOM=$(awk '/oom_kill / {print $2}' "$CG_EVENTS" 2>/dev/null || echo 0)
+		if [ "$CGROUP_OOM" -gt 0 ]; then
+			OOM_DETECTED="true"
+			OOM_DETAILS="Cgroup memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
+		fi
+	fi
+	if [ "$OOM_DETECTED" = "false" ] && [ -r /proc/vmstat ]; then
+		VMSTAT_OOM=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
+		if [ "$VMSTAT_OOM" -gt 0 ]; then
+			OOM_DETECTED="true"
+			OOM_DETAILS="/proc/vmstat recorded ${VMSTAT_OOM} kernel OOM kill(s)."
+		fi
+	fi
+	if [ "$OOM_DETECTED" = "false" ] && command -v dmesg >/dev/null 2>&1; then
+		DMESG_OOM=$(dmesg 2>/dev/null | grep -iE 'killed process|out of memory: killed' | tail -n 1 || true)
+		if [ -n "$DMESG_OOM" ]; then
+			OOM_DETECTED="true"
+			OOM_DETAILS="${DMESG_OOM}"
+		fi
+	fi
 fi
 
 # 4. Generate summary.json (Single Source of Truth)
 ESCAPED_OOM_DETAILS=$(printf '%s' "$OOM_DETAILS" | tr '\r\n\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
 SUMMARY_JSON=$(printf '{"duration_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"disk":{"consumed_mb":%d},"oom_detected":%s,"oom_details":"%s"}' \
-  "$DURATION_SEC" "$SAMPLE_COUNT" \
-  "$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
-  "$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
-  "$DISK_CONSUMED_MB" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
+	"$DURATION_SEC" "$SAMPLE_COUNT" \
+	"$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
+	"$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
+	"$DISK_CONSUMED_MB" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
 echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
 
 # 5. Write to $GITHUB_STEP_SUMMARY
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  {
-    echo "## 📊 Runner Telemetry & Resource Summary"
-    echo ""
-    if [ "$OOM_DETECTED" = "true" ]; then
-      echo "> [!CAUTION]"
-      echo "> **Out-Of-Memory (OOM) Kill Detected!**"
-      echo "> The Linux kernel terminated one or more processes due to memory exhaustion."
-      [ -n "$OOM_DETAILS" ] && echo "> Details: \`${OOM_DETAILS}\`"
-      echo ""
-    fi
-    echo "| Metric | Baseline / Min | Peak / Max | Final / Avg | Trend |"
-    echo "| :--- | :--- | :--- | :--- | :--- |"
-    echo "| **CPU Utilization** | — | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
-    echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
-    echo "| **Disk Consumed** | — | Net: **${DISK_CONSUMED_MB} MB** | — | — |"
-    [ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | — | **${CPU_STEAL_MAX}%** ⚠️ | Hypervisor throttling detected | — |"
-    echo ""
-    echo "### Resource Utilization Timeline"
-    echo ""
-    cat "$CHART_FILE"
-    echo ""
-    echo "*Duration: ${DURATION_SEC}s (${SAMPLE_COUNT} samples)*"
-    echo ""
-  } >>"$GITHUB_STEP_SUMMARY"
+	{
+		echo "## 📊 Runner Telemetry & Resource Summary"
+		echo ""
+		if [ "$OOM_DETECTED" = "true" ]; then
+			echo "> [!CAUTION]"
+			echo "> **Out-Of-Memory (OOM) Kill Detected!**"
+			echo "> The Linux kernel terminated one or more processes due to memory exhaustion."
+			[ -n "$OOM_DETAILS" ] && echo "> Details: \`${OOM_DETAILS}\`"
+			echo ""
+		fi
+		echo "| Metric | Baseline / Min | Peak / Max | Final / Avg | Trend |"
+		echo "| :--- | :--- | :--- | :--- | :--- |"
+		echo "| **CPU Utilization** | — | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
+		echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
+		echo "| **Disk Consumed** | — | Net: **${DISK_CONSUMED_MB} MB** | — | — |"
+		[ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | — | **${CPU_STEAL_MAX}%** ⚠️ | Hypervisor throttling detected | — |"
+		echo ""
+		echo "### Resource Utilization Timeline"
+		echo ""
+		cat "$CHART_FILE"
+		echo ""
+		echo "*Duration: ${DURATION_SEC}s (${SAMPLE_COUNT} samples)*"
+		echo ""
+	} >>"$GITHUB_STEP_SUMMARY"
 fi
 
 # 6. Set Action Outputs
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
-  {
-    printf "peak_memory_mb=%s\n" "$MEM_PEAK_MB"
-    printf "avg_cpu_percent=%s\n" "$CPU_AVG"
-    printf "disk_consumed_mb=%s\n" "$DISK_CONSUMED_MB"
-    printf "oom_detected=%s\n" "$OOM_DETECTED"
-    printf 'summary<<EOF_SUMMARY\n%s\nEOF_SUMMARY\n' "$SUMMARY_JSON"
-  } >>"$GITHUB_OUTPUT"
+	{
+		printf "peak_memory_mb=%s\n" "$MEM_PEAK_MB"
+		printf "avg_cpu_percent=%s\n" "$CPU_AVG"
+		printf "disk_consumed_mb=%s\n" "$DISK_CONSUMED_MB"
+		printf "oom_detected=%s\n" "$OOM_DETECTED"
+		printf 'summary<<EOF_SUMMARY\n%s\nEOF_SUMMARY\n' "$SUMMARY_JSON"
+	} >>"$GITHUB_OUTPUT"
 fi

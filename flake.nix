@@ -8,10 +8,6 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     systems.url = "github:nix-systems/default";
-    treefmt-nix = {
-      url = "github:numtide/treefmt-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     git-hooks-nix = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,7 +20,6 @@
       systems = import inputs.systems;
 
       imports = [
-        inputs.treefmt-nix.flakeModule
         inputs.git-hooks-nix.flakeModule
       ];
 
@@ -35,13 +30,9 @@
           ...
         }:
         {
-          treefmt = {
-            programs.shfmt.enable = true;
-            programs.nixfmt.enable = true;
-          };
-
           pre-commit.settings.hooks = {
-            treefmt.enable = true;
+            shfmt.enable = true;
+            nixfmt.enable = true;
             shellcheck.enable = true;
             statix.enable = true;
             deadnix.enable = true;
@@ -61,6 +52,13 @@
             };
           };
 
+          # waiting for https://github.com/cachix/git-hooks.nix/pull/743
+          formatter =
+            let
+              inherit (config.pre-commit.settings) package configFile;
+            in
+            pkgs.writeShellScriptBin "pre-commit-run" "${pkgs.lib.getExe package} run --all-files --config ${configFile} || true";
+
           packages.test-runner = pkgs.writeShellApplication {
             name = "test-runner";
             runtimeInputs = [ pkgs.gh ];
@@ -73,7 +71,6 @@
           devShells.default = config.pre-commit.devShell;
 
           checks = {
-            formatting = config.treefmt.build.check self;
             test-suite =
               pkgs.runCommand "test-suite"
                 {
