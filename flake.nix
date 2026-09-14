@@ -52,13 +52,6 @@
             };
           };
 
-          # waiting for https://github.com/cachix/git-hooks.nix/pull/743
-          formatter =
-            let
-              inherit (config.pre-commit.settings) package configFile;
-            in
-            pkgs.writeShellScriptBin "pre-commit-run" "${pkgs.lib.getExe package} run --all-files --config ${configFile} || true";
-
           packages.test-runner = pkgs.writeShellApplication {
             name = "test-runner";
             runtimeInputs = [ pkgs.gh ];
