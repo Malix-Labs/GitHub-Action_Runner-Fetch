@@ -100,8 +100,9 @@ function build_mermaid(    dur, x_title, x_max, target_limit, base_overhead, low
 	x_max = dur
 	if (dur >= 3600) {
 		x_title = "Elapsed Time (hours)"
-		x_max = sprintf("%.1f", dur / 3600)
-		if (x_max ~ /\.0$/) sub(/\.0$/, "", x_max)
+		x_max = sprintf("%.2f", dur / 3600)
+		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max)
+		else if (x_max ~ /0$/) sub(/0$/, "", x_max)
 	} else if (dur >= 60) {
 		x_title = "Elapsed Time (minutes)"
 		x_max = sprintf("%.1f", dur / 60)
@@ -387,12 +388,15 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		echo ""
 		cat "$CHART_FILE"
 		echo ""
-		if [ "$DURATION_SEC" -lt 60 ]; then
-			HUMAN_DUR="${DURATION_SEC}s"
-		elif [ "$DURATION_SEC" -lt 3600 ]; then
-			HUMAN_DUR="$((DURATION_SEC / 60))m $((DURATION_SEC % 60))s"
+		DUR_H=$((DURATION_SEC / 3600))
+		DUR_M=$(((DURATION_SEC % 3600) / 60))
+		DUR_S=$((DURATION_SEC % 60))
+		if [ "$DUR_H" -gt 0 ]; then
+			HUMAN_DUR="${DUR_H}h ${DUR_M}m ${DUR_S}s"
+		elif [ "$DUR_M" -gt 0 ]; then
+			HUMAN_DUR="${DUR_M}m ${DUR_S}s"
 		else
-			HUMAN_DUR="$((DURATION_SEC / 3600))h $(((DURATION_SEC % 3600) / 60))m"
+			HUMAN_DUR="${DUR_S}s"
 		fi
 		echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
 		echo ""
