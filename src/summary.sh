@@ -388,15 +388,13 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		echo ""
 		cat "$CHART_FILE"
 		echo ""
-		DUR_H=$((DURATION_SEC / 3600))
-		DUR_M=$(((DURATION_SEC % 3600) / 60))
-		DUR_S=$((DURATION_SEC % 60))
-		if [ "$DUR_H" -gt 0 ]; then
-			HUMAN_DUR="${DUR_H}h ${DUR_M}m ${DUR_S}s"
-		elif [ "$DUR_M" -gt 0 ]; then
-			HUMAN_DUR="${DUR_M}m ${DUR_S}s"
+		if [ "$DURATION_SEC" -ge 86400 ]; then
+			DUR_DAYS=$((DURATION_SEC / 86400))
+			REM_SEC=$((DURATION_SEC % 86400))
+			TIME_PART=$(date -u -d "@${REM_SEC}" "+%T" 2>/dev/null || date -u -r "${REM_SEC}" "+%T" 2>/dev/null || printf "%02d:%02d:%02d" "$((REM_SEC / 3600))" "$(((REM_SEC % 3600) / 60))" "$((REM_SEC % 60))")
+			HUMAN_DUR=$(printf "%02d:%s" "$DUR_DAYS" "$TIME_PART")
 		else
-			HUMAN_DUR="${DUR_S}s"
+			HUMAN_DUR=$(date -u -d "@${DURATION_SEC}" "+%T" 2>/dev/null || date -u -r "${DURATION_SEC}" "+%T" 2>/dev/null || printf "%02d:%02d:%02d" "$((DURATION_SEC / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")
 		fi
 		echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
 		echo ""
