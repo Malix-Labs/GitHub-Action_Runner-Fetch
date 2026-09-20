@@ -92,13 +92,27 @@ function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, ma
 	return total_l
 }
 
-function build_mermaid(    dur, target_limit, base_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg) {
+function build_mermaid(    dur, x_title, x_max, target_limit, base_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg) {
 	dur = (last_epoch > first_epoch ? (last_epoch - first_epoch) : 1)
+
+	# Dynamic human-readable time scaling for X-axis
+	x_title = "Elapsed Time (s)"
+	x_max = dur
+	if (dur >= 3600) {
+		x_title = "Elapsed Time (hours)"
+		x_max = sprintf("%.1f", dur / 3600)
+		if (x_max ~ /\.0$/) sub(/\.0$/, "", x_max)
+	} else if (dur >= 60) {
+		x_title = "Elapsed Time (minutes)"
+		x_max = sprintf("%.1f", dur / 60)
+		if (x_max ~ /\.0$/) sub(/\.0$/, "", x_max)
+	}
+
 	if (count < 2) {
 		return "```mermaid\n" \
 			"xychart\n" \
 			"    title \"Resource Utilization Timeline\"\n" \
-			"    x-axis \"Elapsed Time (s)\" 0 --> " dur "\n" \
+			"    x-axis \"" x_title "\" 0 --> " x_max "\n" \
 			"    y-axis \"Percentage (%)\" 0 --> 100\n" \
 			"    line \"CPU (%)\" [" int(cpu_hist[1]) "," int(cpu_hist[1]) "]\n" \
 			"    line \"RAM (%)\" [" int(mem_hist[1] * 100 / tot_mem) "," int(mem_hist[1] * 100 / tot_mem) "]\n" \
@@ -109,7 +123,7 @@ function build_mermaid(    dur, target_limit, base_overhead, low, high, mid, pts
 	# Note: base_overhead includes the markdown fences ("```mermaid\n" and "```\n" = 16 chars),
 	# which ensures the inner diagram text evaluated by Mermaid is strictly <= 50,000 chars.
 	target_limit = 50000
-	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000,\"height\":600,\"plotReservedSpacePercent\":90}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"Elapsed Time (s)\" 0 --> " dur "\n    y-axis \"Percentage (%)\" 0 --> 100\n    line \"CPU (%)\" []\n    line \"RAM (%)\" []\n```\n")
+	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000,\"height\":600,\"plotReservedSpacePercent\":90}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n    line \"CPU (%)\" []\n    line \"RAM (%)\" []\n```\n")
 
 	if (base_overhead + get_points_len(count) <= target_limit) {
 		# 100% of all calculated points fit inside the ceiling directly
@@ -373,7 +387,14 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		echo ""
 		cat "$CHART_FILE"
 		echo ""
-		echo "*Duration: ${DURATION_SEC}s (${SAMPLE_COUNT} samples)*"
+		if [ "$DURATION_SEC" -lt 60 ]; then
+			HUMAN_DUR="${DURATION_SEC}s"
+		elif [ "$DURATION_SEC" -lt 3600 ]; then
+			HUMAN_DUR="$((DURATION_SEC / 60))m $((DURATION_SEC % 60))s"
+		else
+			HUMAN_DUR="$((DURATION_SEC / 3600))h $(((DURATION_SEC % 3600) / 60))m"
+		fi
+		echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
 		echo ""
 	} >>"$GITHUB_STEP_SUMMARY"
 fi
