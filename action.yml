@@ -7,21 +7,35 @@ branding:
   color: blue
 
 inputs:
-  monitor:
-    description: "Enable continuous background resource monitoring (CPU, RAM, Disk)."
-    required: false
-    default: "true"
   disk-tree:
     description: "Build recursive directory tree with dust."
-    required: false
     default: "true"
+  monitor-cpu:
+    description: "Monitor CPU utilization and performance metrics."
+    default: "true"
+  monitor-memory:
+    description: "Monitor memory (RAM) usage and kernel OOM events."
+    default: "true"
+  monitor-disk:
+    description: "Monitor disk space consumption."
+    default: "false"
+  monitor-network:
+    description: "Monitor network I/O throughput (RX/TX bytes)."
+    default: "false"
+  monitor-disk-io:
+    description: "Monitor disk I/O throughput and read/write rates."
+    default: "false"
+  monitor-swap:
+    description: "Monitor swap space usage and paging."
+    default: "false"
+  monitor-gpu:
+    description: "Monitor GPU utilization and VRAM (auto-detects nvidia-smi)."
+    default: "false"
   sample-interval:
     description: "Telemetry sampling interval in seconds."
-    required: false
     default: "2"
   export-prometheus:
     description: "Generate standard OpenMetrics / Prometheus (.prom) metrics file."
-    required: false
     default: "true"
 
 outputs:

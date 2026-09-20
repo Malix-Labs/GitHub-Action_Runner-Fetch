@@ -23,7 +23,11 @@ fi
 # Allow a moment for monitor to flush last write
 sleep 1
 
-if [ "${INPUT_MONITOR:-true}" = "false" ]; then
+ENABLE_CPU="${INPUT_MONITOR_CPU:-true}"
+ENABLE_MEM="${INPUT_MONITOR_MEMORY:-true}"
+ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
+
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ]; then
 	exit 0
 fi
 
@@ -42,7 +46,7 @@ PROM_TARGET=""
 [ -n "$PROM_TARGET" ] && : >|"$PROM_TARGET"
 
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
-STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" '
+STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" '
 function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	if (n < 1) return "—"
 	pts = (n > 30 ? 30 : n)
@@ -87,12 +91,17 @@ function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, ma
 		if (c_val > 100) c_val = 100
 		if (m_val < 0) m_val = 0
 		if (m_val > 100) m_val = 100
-		total_l += length(c_val) + length(m_val) + (p > 0 ? 2 : 0)
+		if (enable_cpu == "true") total_l += length(c_val) + (p > 0 ? 1 : 0)
+		if (enable_mem == "true") total_l += length(m_val) + (p > 0 ? 1 : 0)
 	}
 	return total_l
 }
 
-function build_mermaid(    dur, x_title, x_max, target_limit, base_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg) {
+function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, base_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg, res, chart_body) {
+	if (enable_cpu != "true" && enable_mem != "true") {
+		return ""
+	}
+
 	dur = (last_epoch > first_epoch ? (last_epoch - first_epoch) : 1)
 
 	# Dynamic human-readable time scaling for X-axis
@@ -115,21 +124,25 @@ function build_mermaid(    dur, x_title, x_max, target_limit, base_overhead, low
 	}
 
 	if (count < 2) {
-		return "```mermaid\n" \
+		res = "```mermaid\n" \
 			"xychart\n" \
 			"    title \"Resource Utilization Timeline\"\n" \
 			"    x-axis \"" x_title "\" 0 --> " x_max "\n" \
-			"    y-axis \"Percentage (%)\" 0 --> 100\n" \
-			"    line \"CPU (%)\" [" int(cpu_hist[1]) "," int(cpu_hist[1]) "]\n" \
-			"    line \"RAM (%)\" [" int(mem_hist[1] * 100 / tot_mem) "," int(mem_hist[1] * 100 / tot_mem) "]\n" \
-			"```\n"
+			"    y-axis \"Percentage (%)\" 0 --> 100\n"
+		if (enable_cpu == "true") res = res "    line \"CPU (%)\" [" int(cpu_hist[1]) "," int(cpu_hist[1]) "]\n"
+		if (enable_mem == "true") res = res "    line \"RAM (%)\" [" int(mem_hist[1] * 100 / tot_mem) "," int(mem_hist[1] * 100 / tot_mem) "]\n"
+		res = res "```\n"
+		return res
 	}
 
 	# Hard ceiling is 50,000 characters (Mermaid defaultConfig maxTextSize).
 	# Note: base_overhead includes the markdown fences ("```mermaid\n" and "```\n" = 16 chars),
 	# which ensures the inner diagram text evaluated by Mermaid is strictly <= 50,000 chars.
 	target_limit = 50000
-	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000,\"height\":600,\"plotReservedSpacePercent\":90}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n    line \"CPU (%)\" []\n    line \"RAM (%)\" []\n```\n")
+	lines_overhead = ""
+	if (enable_cpu == "true") lines_overhead = lines_overhead "    line \"CPU (%)\" []\n"
+	if (enable_mem == "true") lines_overhead = lines_overhead "    line \"RAM (%)\" []\n"
+	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000,\"height\":600,\"plotReservedSpacePercent\":90}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
 
 	if (base_overhead + get_points_len(count) <= target_limit) {
 		# 100% of all calculated points fit inside the ceiling directly
@@ -203,25 +216,28 @@ function build_mermaid(    dur, x_title, x_max, target_limit, base_overhead, low
 		if (m_val < 0) m_val = 0
 		if (m_val > 100) m_val = 100
 
-		if (p == 0) {
-			m_c = m_c c_val
-			m_m = m_m m_val
-		} else {
-			m_c = m_c "," c_val
-			m_m = m_m "," m_val
+		if (enable_cpu == "true") {
+			if (p == 0) m_c = m_c c_val
+			else m_c = m_c "," c_val
+		}
+		if (enable_mem == "true") {
+			if (p == 0) m_m = m_m m_val
+			else m_m = m_m "," m_val
 		}
 	}
 	m_c = m_c "]"
 	m_m = m_m "]"
 
-	return "```mermaid\n" cfg \
+	chart_body = "```mermaid\n" cfg \
 		"xychart\n" \
 		"    title \"Resource Utilization Timeline\"\n" \
 		"    x-axis \"" x_title "\" 0 --> " x_max "\n" \
-		"    y-axis \"Percentage (%)\" 0 --> 100\n" \
-		"    " m_c "\n" \
-		"    " m_m "\n" \
-		"```\n"
+		"    y-axis \"Percentage (%)\" 0 --> 100\n"
+	if (enable_cpu == "true") chart_body = chart_body "    " m_c "\n"
+	if (enable_mem == "true") chart_body = chart_body "    " m_m "\n"
+	chart_body = chart_body "```\n"
+
+	return chart_body
 }
 
 BEGIN {
@@ -235,20 +251,26 @@ BEGIN {
 	blocks[7] = "█"
 
 	if (prom_file != "") {
-		print "# HELP runner_cpu_percent Total CPU usage percentage" > prom_file
-		print "# TYPE runner_cpu_percent gauge" >> prom_file
-		print "# HELP runner_cpu_user_percent User space CPU percentage" >> prom_file
-		print "# TYPE runner_cpu_user_percent gauge" >> prom_file
-		print "# HELP runner_cpu_system_percent Kernel space CPU percentage" >> prom_file
-		print "# TYPE runner_cpu_system_percent gauge" >> prom_file
-		print "# HELP runner_cpu_steal_percent Hypervisor steal CPU percentage" >> prom_file
-		print "# TYPE runner_cpu_steal_percent gauge" >> prom_file
-		print "# HELP runner_memory_used_bytes Memory used in bytes" >> prom_file
-		print "# TYPE runner_memory_used_bytes gauge" >> prom_file
-		print "# HELP runner_memory_available_bytes Memory available in bytes" >> prom_file
-		print "# TYPE runner_memory_available_bytes gauge" >> prom_file
-		print "# HELP runner_disk_free_bytes Free disk space in bytes" >> prom_file
-		print "# TYPE runner_disk_free_bytes gauge" >> prom_file
+		if (enable_cpu == "true") {
+			print "# HELP runner_cpu_percent Total CPU usage percentage" > prom_file
+			print "# TYPE runner_cpu_percent gauge" >> prom_file
+			print "# HELP runner_cpu_user_percent User space CPU percentage" >> prom_file
+			print "# TYPE runner_cpu_user_percent gauge" >> prom_file
+			print "# HELP runner_cpu_system_percent Kernel space CPU percentage" >> prom_file
+			print "# TYPE runner_cpu_system_percent gauge" >> prom_file
+			print "# HELP runner_cpu_steal_percent Hypervisor steal CPU percentage" >> prom_file
+			print "# TYPE runner_cpu_steal_percent gauge" >> prom_file
+		}
+		if (enable_mem == "true") {
+			print "# HELP runner_memory_used_bytes Memory used in bytes" >> prom_file
+			print "# TYPE runner_memory_used_bytes gauge" >> prom_file
+			print "# HELP runner_memory_available_bytes Memory available in bytes" >> prom_file
+			print "# TYPE runner_memory_available_bytes gauge" >> prom_file
+		}
+		if (enable_disk == "true") {
+			print "# HELP runner_disk_free_bytes Free disk space in bytes" >> prom_file
+			print "# TYPE runner_disk_free_bytes gauge" >> prom_file
+		}
 	}
 }
 
@@ -284,13 +306,19 @@ NR > 1 {
 
 	if (prom_file != "") {
 		ts = epoch "000"
-		printf "runner_cpu_percent{runner=\"%s\"} %s %s\n", rname, tot, ts >> prom_file
-		printf "runner_cpu_user_percent{runner=\"%s\"} %s %s\n", rname, u, ts >> prom_file
-		printf "runner_cpu_system_percent{runner=\"%s\"} %s %s\n", rname, s, ts >> prom_file
-		printf "runner_cpu_steal_percent{runner=\"%s\"} %s %s\n", rname, st, ts >> prom_file
-		printf "runner_memory_used_bytes{runner=\"%s\"} %d %s\n", rname, (m_used * 1048576), ts >> prom_file
-		printf "runner_memory_available_bytes{runner=\"%s\"} %d %s\n", rname, (m_avail * 1048576), ts >> prom_file
-		printf "runner_disk_free_bytes{runner=\"%s\",mount=\"/\"} %d %s\n", rname, (d_free * 1048576), ts >> prom_file
+		if (enable_cpu == "true") {
+			printf "runner_cpu_percent{runner=\"%s\"} %s %s\n", rname, tot, ts >> prom_file
+			printf "runner_cpu_user_percent{runner=\"%s\"} %s %s\n", rname, u, ts >> prom_file
+			printf "runner_cpu_system_percent{runner=\"%s\"} %s %s\n", rname, s, ts >> prom_file
+			printf "runner_cpu_steal_percent{runner=\"%s\"} %s %s\n", rname, st, ts >> prom_file
+		}
+		if (enable_mem == "true") {
+			printf "runner_memory_used_bytes{runner=\"%s\"} %d %s\n", rname, (m_used * 1048576), ts >> prom_file
+			printf "runner_memory_available_bytes{runner=\"%s\"} %d %s\n", rname, (m_avail * 1048576), ts >> prom_file
+		}
+		if (enable_disk == "true") {
+			printf "runner_disk_free_bytes{runner=\"%s\",mount=\"/\"} %d %s\n", rname, (d_free * 1048576), ts >> prom_file
+		}
 	}
 }
 
@@ -305,7 +333,10 @@ END {
 	peak_mem_pct = int((peak_mem * 100) / tot_mem)
 
 	if (chart_file != "") {
-		printf "%s", build_mermaid() > chart_file
+		chart_content = build_mermaid()
+		if (chart_content != "") {
+			printf "%s", chart_content > chart_file
+		}
 	}
 
 	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
@@ -326,36 +357,38 @@ EOF
 OOM_DETECTED="false"
 OOM_DETAILS=""
 
-if [ "$OOM_COUNT" -gt 0 ]; then
-	OOM_DETECTED="true"
-	OOM_DETAILS="Kernel recorded ${OOM_COUNT} process kill event(s)."
-fi
-
-if [ "$OOM_DETECTED" = "false" ] && [ "$TARGET_OS" = "Linux" ]; then
-	CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
-	CG_EVENTS=""
-	[ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ] && CG_EVENTS="/sys/fs/cgroup${CGPATH}/memory.events"
-	[ -z "$CG_EVENTS" ] && [ -r /sys/fs/cgroup/memory.events ] && CG_EVENTS="/sys/fs/cgroup/memory.events"
-
-	if [ -n "$CG_EVENTS" ]; then
-		CGROUP_OOM=$(awk '/oom_kill / {print $2}' "$CG_EVENTS" 2>/dev/null || echo 0)
-		if [ "$CGROUP_OOM" -gt 0 ]; then
-			OOM_DETECTED="true"
-			OOM_DETAILS="Cgroup memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
-		fi
+if [ "$ENABLE_MEM" = "true" ]; then
+	if [ "$OOM_COUNT" -gt 0 ]; then
+		OOM_DETECTED="true"
+		OOM_DETAILS="Kernel recorded ${OOM_COUNT} process kill event(s)."
 	fi
-	if [ "$OOM_DETECTED" = "false" ] && [ -r /proc/vmstat ]; then
-		VMSTAT_OOM=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
-		if [ "$VMSTAT_OOM" -gt 0 ]; then
-			OOM_DETECTED="true"
-			OOM_DETAILS="/proc/vmstat recorded ${VMSTAT_OOM} kernel OOM kill(s)."
+
+	if [ "$OOM_DETECTED" = "false" ] && [ "$TARGET_OS" = "Linux" ]; then
+		CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
+		CG_EVENTS=""
+		[ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ] && CG_EVENTS="/sys/fs/cgroup${CGPATH}/memory.events"
+		[ -z "$CG_EVENTS" ] && [ -r /sys/fs/cgroup/memory.events ] && CG_EVENTS="/sys/fs/cgroup/memory.events"
+
+		if [ -n "$CG_EVENTS" ]; then
+			CGROUP_OOM=$(awk '/oom_kill / {print $2}' "$CG_EVENTS" 2>/dev/null || echo 0)
+			if [ "$CGROUP_OOM" -gt 0 ]; then
+				OOM_DETECTED="true"
+				OOM_DETAILS="Cgroup memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
+			fi
 		fi
-	fi
-	if [ "$OOM_DETECTED" = "false" ] && command -v dmesg >/dev/null 2>&1; then
-		DMESG_OOM=$(dmesg 2>/dev/null | grep -iE 'killed process|out of memory: killed' | tail -n 1 || true)
-		if [ -n "$DMESG_OOM" ]; then
-			OOM_DETECTED="true"
-			OOM_DETAILS="${DMESG_OOM}"
+		if [ "$OOM_DETECTED" = "false" ] && [ -r /proc/vmstat ]; then
+			VMSTAT_OOM=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
+			if [ "$VMSTAT_OOM" -gt 0 ]; then
+				OOM_DETECTED="true"
+				OOM_DETAILS="/proc/vmstat recorded ${VMSTAT_OOM} kernel OOM kill(s)."
+			fi
+		fi
+		if [ "$OOM_DETECTED" = "false" ] && command -v dmesg >/dev/null 2>&1; then
+			DMESG_OOM=$(dmesg 2>/dev/null | grep -iE 'killed process|out of memory: killed' | tail -n 1 || true)
+			if [ -n "$DMESG_OOM" ]; then
+				OOM_DETECTED="true"
+				OOM_DETAILS="${DMESG_OOM}"
+			fi
 		fi
 	fi
 fi
@@ -384,15 +417,17 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		fi
 		echo "| Metric | Baseline / Min | Peak / Max | Final / Avg | Trend |"
 		echo "| :--- | :--- | :--- | :--- | :--- |"
-		echo "| **CPU Utilization** | — | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
-		echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
-		echo "| **Disk Consumed** | — | Net: **${DISK_CONSUMED_MB} MB** | — | — |"
-		[ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | — | **${CPU_STEAL_MAX}%** ⚠️ | Hypervisor throttling detected | — |"
+		[ "$ENABLE_CPU" = "true" ] && echo "| **CPU Utilization** | — | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
+		[ "$ENABLE_MEM" = "true" ] && echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
+		[ "$ENABLE_DISK" = "true" ] && echo "| **Disk Consumed** | — | Net: **${DISK_CONSUMED_MB} MB** | — | — |"
+		[ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | — | **${CPU_STEAL_MAX}%** ⚠️ | Hypervisor throttling detected | — |"
 		echo ""
-		echo "### Resource Utilization Timeline"
-		echo ""
-		cat "$CHART_FILE"
-		echo ""
+		if [ -s "$CHART_FILE" ]; then
+			echo "### Resource Utilization Timeline"
+			echo ""
+			cat "$CHART_FILE"
+			echo ""
+		fi
 		HUMAN_DUR=$(printf "%02d:%02d:%02d:%02d" "$((DURATION_SEC / 86400))" "$(((DURATION_SEC % 86400) / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")
 		echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
 		echo ""
