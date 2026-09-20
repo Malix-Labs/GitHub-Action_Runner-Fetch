@@ -8,9 +8,9 @@ GitHub Action to inspect and continuously monitor GitHub Actions runner VMs.
 - Recursive directory tree via `dust`
 - Continuous resource saturation monitoring (CPU %, RAM, Disk)
 - Automatic crash / Out-Of-Memory (OOM) autopsy diagnostics
-- Dual-consumption: formatted Markdown and SVG sparklines in
-  `$GITHUB_STEP_SUMMARY` for humans, structured JSON and OpenMetrics
-  (`metrics.prom`) for machines
+- Dual-consumption: formatted Markdown, Unicode sparklines, and native
+  Mermaid timeline chart in `$GITHUB_STEP_SUMMARY` for humans, structured
+  JSON and OpenMetrics (`metrics.prom`) for machines
 
 ## Usage
 
