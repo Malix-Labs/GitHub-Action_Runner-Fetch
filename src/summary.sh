@@ -63,7 +63,36 @@ function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 # https://github.com/mermaid-js/mermaid/blob/develop/packages/mermaid/src/defaultConfig.ts#L41
 # Official xyChart documentation:
 # https://mermaid.ai/open-source/syntax/xyChart.html
-function build_mermaid(    dur, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg) {
+function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, total_l) {
+	total_l = 0
+	step_sz = (count - 1) / (candidate_pts - 1)
+	for (p = 0; p < candidate_pts; p++) {
+		if (candidate_pts == count) {
+			c_val = int(cpu_hist[p + 1])
+			m_val = int(mem_hist[p + 1] * 100 / tot_mem)
+		} else {
+			s_idx = int(1 + p * step_sz)
+			e_idx = int(1 + (p + 1) * step_sz)
+			if (e_idx > count) e_idx = count
+			max_c = 0
+			max_m = 0
+			for (j = s_idx; j <= e_idx; j++) {
+				if (cpu_hist[j] > max_c) max_c = cpu_hist[j]
+				if (mem_hist[j] > max_m) max_m = mem_hist[j]
+			}
+			c_val = int(max_c)
+			m_val = int(max_m * 100 / tot_mem)
+		}
+		if (c_val < 0) c_val = 0
+		if (c_val > 100) c_val = 100
+		if (m_val < 0) m_val = 0
+		if (m_val > 100) m_val = 100
+		total_l += length(c_val) + length(m_val) + (p > 0 ? 2 : 0)
+	}
+	return total_l
+}
+
+function build_mermaid(    dur, target_limit, base_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg) {
 	dur = (last_epoch > first_epoch ? (last_epoch - first_epoch) : 1)
 	if (count < 2) {
 		return "```mermaid\n" \
@@ -76,12 +105,28 @@ function build_mermaid(    dur, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_
 			"```\n"
 	}
 
-	# Hard ceiling is 50,000 characters. With minified arrays [c1,c2,...] without spaces,
-	# each point consumes at most ~6-8 characters total across both series.
-	# Maximum safe points that will never exceed 49,000 characters: 6,000 points.
-	# If count <= 6000: display 100% of every calculated point with zero downsampling.
-	# If count > 6000: downsample into 6,000 buckets using peak preservation (max CPU & RAM per bucket).
-	pts = (count > 6000 ? 6000 : count)
+	# Hard ceiling is 50,000 characters. Dynamically maximize points to fill the 49,000 budget.
+	target_limit = 49000
+	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000,\"height\":600,\"plotReservedSpacePercent\":90}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"Elapsed Time (s)\" 0 --> " dur "\n    y-axis \"Percentage (%)\" 0 --> 100\n    line \"CPU (%)\" []\n    line \"RAM (%)\" []\n```\n")
+
+	if (base_overhead + get_points_len(count) <= target_limit) {
+		# 100% of all calculated points fit inside the ceiling directly
+		pts = count
+	} else {
+		# Binary search for the exact maximum points that maximizes budget without exceeding ceiling
+		low = 2
+		high = count
+		pts = 2
+		while (low <= high) {
+			mid = int((low + high) / 2)
+			if (base_overhead + get_points_len(mid) <= target_limit) {
+				pts = mid
+				low = mid + 1
+			} else {
+				high = mid - 1
+			}
+		}
+	}
 
 	# Dynamic canvas dimensions to maintain ~3.5:1 aspect ratio across point densities
 	if (pts <= 150) {
