@@ -59,37 +59,102 @@ function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	return res
 }
 
-function build_mermaid(    pts, p, idx, rel_sec, c_val, m_val, sep, m_x, m_c, m_m) {
-	m_x = "    x-axis ["
-	m_c = "    line \"CPU (%)\" ["
-	m_m = "    line \"RAM (%)\" ["
+# Source of truth for Mermaid 50,000 max character limit:
+# https://github.com/mermaid-js/mermaid/blob/develop/packages/mermaid/src/defaultConfig.ts#L41
+# Official xyChart documentation:
+# https://mermaid.ai/open-source/syntax/xyChart.html
+function build_mermaid(    dur, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg) {
+	dur = (last_epoch > first_epoch ? (last_epoch - first_epoch) : 1)
+	if (count < 2) {
+		return "```mermaid\n" \
+			"xychart\n" \
+			"    title \"Resource Utilization Timeline\"\n" \
+			"    x-axis \"Elapsed Time (s)\" 0 --> " dur "\n" \
+			"    y-axis \"Percentage (%)\" 0 --> 100\n" \
+			"    line \"CPU (%)\" [" int(cpu_hist[1]) "," int(cpu_hist[1]) "]\n" \
+			"    line \"RAM (%)\" [" int(mem_hist[1] * 100 / tot_mem) "," int(mem_hist[1] * 100 / tot_mem) "]\n" \
+			"```\n"
+	}
 
-	pts = (count < 2 ? 2 : (count > 25 ? 25 : count))
+	# Hard ceiling is 50,000 characters. With minified arrays [c1,c2,...] without spaces,
+	# each point consumes at most ~6-8 characters total across both series.
+	# Maximum safe points that will never exceed 49,000 characters: 6,000 points.
+	# If count <= 6000: display 100% of every calculated point with zero downsampling.
+	# If count > 6000: downsample into 6,000 buckets using peak preservation (max CPU & RAM per bucket).
+	pts = (count > 6000 ? 6000 : count)
+
+	# Dynamic canvas dimensions to maintain ~3.5:1 aspect ratio across point densities
+	if (pts <= 150) {
+		w = 950
+		h = 380
+		reserved = 70
+	} else if (pts <= 600) {
+		w = 1400
+		h = 400
+		reserved = 75
+	} else if (pts <= 1500) {
+		w = 2000
+		h = 450
+		reserved = 80
+	} else if (pts <= 3500) {
+		w = 3200
+		h = 500
+		reserved = 85
+	} else {
+		w = 5000
+		h = 600
+		reserved = 90
+	}
+
+	cfg = "%%{init:{\"xyChart\":{\"width\":" w ",\"height\":" h ",\"plotReservedSpacePercent\":" reserved "}}}%%\n"
+
+	m_c = "line \"CPU (%)\" ["
+	m_m = "line \"RAM (%)\" ["
+
 	for (p = 0; p < pts; p++) {
-		idx = (count < 2 ? 1 : int(1 + p * (count - 1) / (pts - 1)))
-		if (idx > count) idx = count
+		if (pts == count) {
+			# 1:1 exact plotting without downsampling
+			c_val = int(cpu_hist[p + 1])
+			m_val = int(mem_hist[p + 1] * 100 / tot_mem)
+		} else {
+			# Peak-preserving bucket aggregation
+			s_idx = int(1 + p * (count - 1) / (pts - 1))
+			e_idx = int(1 + (p + 1) * (count - 1) / (pts - 1))
+			if (e_idx > count) e_idx = count
+			max_c = 0
+			max_m = 0
+			for (j = s_idx; j <= e_idx; j++) {
+				if (cpu_hist[j] > max_c) max_c = cpu_hist[j]
+				if (mem_hist[j] > max_m) max_m = mem_hist[j]
+			}
+			c_val = int(max_c)
+			m_val = int(max_m * 100 / tot_mem)
+		}
 
-		rel_sec = t_hist[idx] - first_epoch
-		if (count < 2 && p == 1) rel_sec = 1
-
-		c_val = int(cpu_hist[idx])
 		if (c_val < 0) c_val = 0
 		if (c_val > 100) c_val = 100
-
-		m_val = int(mem_hist[idx] * 100 / (tot_mem > 0 ? tot_mem : 1))
 		if (m_val < 0) m_val = 0
 		if (m_val > 100) m_val = 100
 
-		sep = (p == 0 ? "" : ", ")
-		m_x = m_x sep "\"" rel_sec "s\""
-		m_c = m_c sep c_val
-		m_m = m_m sep m_val
+		if (p == 0) {
+			m_c = m_c c_val
+			m_m = m_m m_val
+		} else {
+			m_c = m_c "," c_val
+			m_m = m_m "," m_val
+		}
 	}
-	m_x = m_x "]"
 	m_c = m_c "]"
 	m_m = m_m "]"
 
-	return "```mermaid\nxychart\n    title \"Resource Utilization Timeline\"\n" m_x "\n    y-axis \"Percentage (%)\" 0 --> 100\n" m_c "\n" m_m "\n```\n"
+	return "```mermaid\n" cfg \
+		"xychart\n" \
+		"    title \"Resource Utilization Timeline\"\n" \
+		"    x-axis \"Elapsed Time (s)\" 0 --> " dur "\n" \
+		"    y-axis \"Percentage (%)\" 0 --> 100\n" \
+		"    " m_c "\n" \
+		"    " m_m "\n" \
+		"```\n"
 }
 
 BEGIN {

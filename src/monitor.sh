@@ -29,6 +29,17 @@ if [ "$TARGET_OS" = "Linux" ]; then
 	fi
 fi
 
+# Pre-resolve target mount point for disk monitoring (inspects actual workspace/temp NVMe on large runners)
+TARGET_DISK_DIR="${GITHUB_WORKSPACE:-${RUNNER_TEMP:-/}}"
+
+# Hoist invariant Darwin hardware specifications outside loop
+HW_MEMSIZE=0
+HW_PAGESIZE=4096
+if [ "$TARGET_OS" = "macOS" ]; then
+	HW_MEMSIZE=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+	HW_PAGESIZE=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
+fi
+
 PREV_USER=0
 PREV_NICE=0
 PREV_SYS=0
@@ -47,8 +58,8 @@ while :; do
 	MEM_AVAIL_MB=0
 	OOM_KILLS=0
 
-	# 1. Common root disk free across all platforms
-	DISK_FREE_MB=$(df -k / 2>/dev/null | awk 'NR==2 {print int($4/1024)}' || echo 0)
+	# 1. Target filesystem free disk space (actual workspace mount across all platforms)
+	DISK_FREE_MB=$(df -k "$TARGET_DISK_DIR" 2>/dev/null | awk 'NR==2 {print int($4/1024)}' || echo 0)
 
 	# 2. Memory metrics: /proc/meminfo is shared between Linux and Windows (MSYS/Git Bash)
 	if [ -r /proc/meminfo ]; then
@@ -103,19 +114,12 @@ while :; do
 		;;
 
 	"macOS")
-		VM_OUT=$(vm_stat 2>/dev/null || echo "")
-		PAGES_FREE=$(echo "$VM_OUT" | awk '/Pages free:/ {print $3}' | tr -d '.\r' || echo 0)
-		PAGES_SPEC=$(echo "$VM_OUT" | awk '/Pages speculative:/ {print $3}' | tr -d '.\r' || echo 0)
-		PAGES_FREE="${PAGES_FREE:-0}"
-		PAGES_SPEC="${PAGES_SPEC:-0}"
-		PAGE_SIZE="${PAGE_SIZE:-4096}"
-		MEM_AVAIL_MB=$(((PAGES_FREE + PAGES_SPEC) * PAGE_SIZE / 1048576))
-		TOTAL_MEM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
-		TOTAL_MEM_BYTES="${TOTAL_MEM_BYTES:-0}"
-		if [ "$TOTAL_MEM_BYTES" -gt 0 ]; then
-			MEM_USED_MB=$(((TOTAL_MEM_BYTES / 1048576) - MEM_AVAIL_MB))
+		MEM_AVAIL_PAGES=$(vm_stat 2>/dev/null | awk -F: '/Pages (free|speculative):/ { sub(/[. \t\r]+$/, "", $2); s += $2 } END { print s+0 }')
+		MEM_AVAIL_MB=$(((MEM_AVAIL_PAGES * HW_PAGESIZE) / 1048576))
+		if [ "$HW_MEMSIZE" -gt 0 ]; then
+			MEM_USED_MB=$(((HW_MEMSIZE / 1048576) - MEM_AVAIL_MB))
 		fi
-		CPU_TOTAL=$(top -l 1 -n 0 2>/dev/null | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
+		CPU_TOTAL=$(top -l 1 -n 0 -F -R 2>/dev/null | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
 		;;
 
 	"Windows")
