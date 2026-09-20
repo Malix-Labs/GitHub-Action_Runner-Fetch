@@ -388,15 +388,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		echo ""
 		cat "$CHART_FILE"
 		echo ""
-		D_D=$((DURATION_SEC / 86400))
-		D_H=$(((DURATION_SEC % 86400) / 3600))
-		D_M=$(((DURATION_SEC % 3600) / 60))
-		D_S=$((DURATION_SEC % 60))
-		if [ "$D_D" -gt 0 ]; then
-			HUMAN_DUR=$(printf "%02d:%02d:%02d:%02d" "$D_D" "$D_H" "$D_M" "$D_S")
-		else
-			HUMAN_DUR=$(printf "%02d:%02d:%02d" "$D_H" "$D_M" "$D_S")
-		fi
+		HUMAN_DUR=$(printf "%02d:%02d:%02d" "$((DURATION_SEC / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")
 		echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
 		echo ""
 	} >>"$GITHUB_STEP_SUMMARY"
