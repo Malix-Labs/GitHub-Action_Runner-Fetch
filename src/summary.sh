@@ -105,8 +105,10 @@ function build_mermaid(    dur, target_limit, base_overhead, low, high, mid, pts
 			"```\n"
 	}
 
-	# Hard ceiling is 50,000 characters. Dynamically maximize points to fill the 49,000 budget.
-	target_limit = 49000
+	# Hard ceiling is 50,000 characters (Mermaid defaultConfig maxTextSize).
+	# Note: base_overhead includes the markdown fences ("```mermaid\n" and "```\n" = 16 chars),
+	# which ensures the inner diagram text evaluated by Mermaid is strictly <= 50,000 chars.
+	target_limit = 50000
 	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000,\"height\":600,\"plotReservedSpacePercent\":90}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"Elapsed Time (s)\" 0 --> " dur "\n    y-axis \"Percentage (%)\" 0 --> 100\n    line \"CPU (%)\" []\n    line \"RAM (%)\" []\n```\n")
 
 	if (base_overhead + get_points_len(count) <= target_limit) {
