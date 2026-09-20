@@ -59,10 +59,10 @@ function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	return res
 }
 
-# Source of truth for Mermaid 50,000 max character limit:
-# https://github.com/mermaid-js/mermaid/blob/develop/packages/mermaid/src/defaultConfig.ts#L41
-# Official xyChart documentation:
-# https://mermaid.ai/open-source/syntax/xyChart.html
+# Source of truth for Mermaid 50,000 maxTextSize limit:
+# Docs: https://mermaid.js.org/config/setup/mermaid/interfaces/MermaidConfig.html#maxtextsize
+# Code Permalink: https://github.com/mermaid-js/mermaid/blob/386bbcaad2ce3ed0cbbba88fab75fb31c5b251e6/packages/mermaid/src/schemas/config.schema.yaml#L87-L90
+# Official xyChart documentation: https://mermaid.ai/open-source/syntax/xyChart.html
 function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, total_l) {
 	total_l = 0
 	step_sz = (count - 1) / (candidate_pts - 1)
