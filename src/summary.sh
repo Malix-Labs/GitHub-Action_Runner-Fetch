@@ -142,7 +142,7 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, ba
 	lines_overhead = ""
 	if (enable_cpu == "true") lines_overhead = lines_overhead "    line \"CPU\" []\n"
 	if (enable_mem == "true") lines_overhead = lines_overhead "    line \"RAM\" []\n"
-	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":2200}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
+	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000,\"height\":600,\"plotReservedSpacePercent\":90}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
 
 	if (base_overhead + get_points_len(count) <= target_limit) {
 		# 100% of all calculated points fit inside the ceiling directly
@@ -163,7 +163,30 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, ba
 		}
 	}
 
-	cfg = "%%{init:{\"xyChart\":{\"width\":2200}}}%%\n"
+	# Dynamic canvas dimensions to maintain ~3.5:1 aspect ratio across point densities
+	if (pts <= 150) {
+		w = 950
+		h = 380
+		reserved = 70
+	} else if (pts <= 600) {
+		w = 1400
+		h = 400
+		reserved = 75
+	} else if (pts <= 1500) {
+		w = 2000
+		h = 450
+		reserved = 80
+	} else if (pts <= 3500) {
+		w = 3200
+		h = 500
+		reserved = 85
+	} else {
+		w = 5000
+		h = 600
+		reserved = 90
+	}
+
+	cfg = "%%{init:{\"xyChart\":{\"width\":" w ",\"height\":" h ",\"plotReservedSpacePercent\":" reserved "}}}%%\n"
 
 	m_c = "line \"CPU\" ["
 	m_m = "line \"RAM\" ["
