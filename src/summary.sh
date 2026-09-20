@@ -23,9 +23,9 @@ fi
 # Allow a moment for monitor to flush last write
 sleep 1
 
-ENABLE_CPU="${INPUT_MONITOR_CPU:-true}"
-ENABLE_MEM="${INPUT_MONITOR_MEMORY:-true}"
-ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
+ENABLE_CPU="${INPUT_MONITOR_CPU}"
+ENABLE_MEM="${INPUT_MONITOR_MEMORY}"
+ENABLE_DISK="${INPUT_MONITOR_DISK}"
 
 if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ]; then
 	exit 0
@@ -39,7 +39,7 @@ fi
 TARGET_OS="${RUNNER_OS:-Linux}"
 RUNNER_NAME="${RUNNER_NAME:-unknown}"
 PROM_TARGET=""
-[ "${INPUT_EXPORT_PROMETHEUS:-true}" = "true" ] && PROM_TARGET="$PROM_FILE"
+[ "$INPUT_EXPORT_PROMETHEUS" = "true" ] && PROM_TARGET="$PROM_FILE"
 
 # Truncate output files safely under noclobber (set -C)
 : >|"$CHART_FILE"

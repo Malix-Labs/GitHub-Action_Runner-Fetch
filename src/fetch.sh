@@ -6,7 +6,7 @@ mkdir -p "$OUT_DIR"
 DISK_TREE_FILE="${OUT_DIR}/disk_tree.json"
 
 TARGET_OS="${RUNNER_OS:-Linux}"
-ENABLE_DISK_TREE="${INPUT_DISK_TREE:-true}"
+ENABLE_DISK_TREE="${INPUT_DISK_TREE}"
 
 if [ "$ENABLE_DISK_TREE" = "true" ] && ! command -v dust >/dev/null 2>&1 && [ ! -f "${OUT_DIR}/dust" ] && [ ! -f "${OUT_DIR}/dust.exe" ]; then
 	# 1. Try web redirect to avoid GitHub API unauthenticated rate limits (60 req/hr)
