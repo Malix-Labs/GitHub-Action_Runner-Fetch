@@ -112,7 +112,7 @@ if [ "$CHART_SIZE" -lt 45000 ]; then
 	exit 1
 fi
 # Verify peak 100% CPU spike is preserved in downsampled chart
-if ! grep 'line "CPU (%)"' "$CHART_FILE" | grep -q ",100,"; then
+if ! grep 'line "CPU"' "$CHART_FILE" | grep -q ",100,"; then
 	echo "Error: 100% CPU spike was not preserved in downsampled chart" >&2
 	exit 1
 fi
@@ -190,7 +190,7 @@ if [ ! -s "$RUN_DIR/runner-fetch/summary.json" ]; then
 	echo "Error: summary.json was not generated for single-point run" >&2
 	exit 1
 fi
-if ! grep -q 'line "CPU (%)" \[20,20\]' "$RUN_DIR/runner-fetch/chart.mermaid"; then
+if ! grep -q 'line "CPU" \[20,20\]' "$RUN_DIR/runner-fetch/chart.mermaid"; then
 	echo "Error: Single-point flatline fallback not rendered in chart" >&2
 	exit 1
 fi
@@ -243,11 +243,11 @@ if grep -q "CPU Utilization" "$GITHUB_STEP_SUMMARY"; then
 	echo "Error: CPU Utilization present in step summary when monitor-cpu is false" >&2
 	exit 1
 fi
-if grep -q 'line "CPU (%)"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
+if grep -q 'line "CPU"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
 	echo "Error: CPU line present in chart when monitor-cpu is false" >&2
 	exit 1
 fi
-if ! grep -q 'line "RAM (%)"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
+if ! grep -q 'line "RAM"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
 	echo "Error: RAM line missing in chart when monitor-memory is true" >&2
 	exit 1
 fi
@@ -262,11 +262,11 @@ if grep -q "Memory Usage" "$GITHUB_STEP_SUMMARY"; then
 	echo "Error: Memory Usage present in step summary when monitor-memory is false" >&2
 	exit 1
 fi
-if grep -q 'line "RAM (%)"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
+if grep -q 'line "RAM"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
 	echo "Error: RAM line present in chart when monitor-memory is false" >&2
 	exit 1
 fi
-if ! grep -q 'line "CPU (%)"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
+if ! grep -q 'line "CPU"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
 	echo "Error: CPU line missing in chart when monitor-cpu is true" >&2
 	exit 1
 fi
