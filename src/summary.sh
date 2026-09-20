@@ -98,7 +98,12 @@ function build_mermaid(    dur, x_title, x_max, target_limit, base_overhead, low
 	# Dynamic human-readable time scaling for X-axis
 	x_title = "Elapsed Time (s)"
 	x_max = dur
-	if (dur >= 3600) {
+	if (dur >= 86400) {
+		x_title = "Elapsed Time (days)"
+		x_max = sprintf("%.2f", dur / 86400)
+		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max)
+		else if (x_max ~ /0$/) sub(/0$/, "", x_max)
+	} else if (dur >= 3600) {
 		x_title = "Elapsed Time (hours)"
 		x_max = sprintf("%.2f", dur / 3600)
 		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max)
@@ -212,7 +217,7 @@ function build_mermaid(    dur, x_title, x_max, target_limit, base_overhead, low
 	return "```mermaid\n" cfg \
 		"xychart\n" \
 		"    title \"Resource Utilization Timeline\"\n" \
-		"    x-axis \"Elapsed Time (s)\" 0 --> " dur "\n" \
+		"    x-axis \"" x_title "\" 0 --> " x_max "\n" \
 		"    y-axis \"Percentage (%)\" 0 --> 100\n" \
 		"    " m_c "\n" \
 		"    " m_m "\n" \
