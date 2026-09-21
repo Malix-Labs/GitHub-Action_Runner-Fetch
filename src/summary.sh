@@ -164,6 +164,7 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, ba
 	}
 
 	# Dynamic canvas dimensions to maintain ~3.5:1 aspect ratio across point densities
+	# (wide-chart legend cropping fixed upstream by https://github.com/mermaid-js/mermaid/pull/8284)
 	if (pts <= 150) {
 		w = 950
 		h = 380
