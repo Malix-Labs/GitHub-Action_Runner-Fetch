@@ -97,7 +97,7 @@ function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, ma
 	return total_l
 }
 
-function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, base_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg, res, chart_body) {
+function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, static_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg, res, chart_body) {
 	if (enable_cpu != "true" && enable_mem != "true") {
 		return ""
 	}
@@ -136,15 +136,15 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, ba
 	}
 
 	# Hard ceiling is 50,000 characters (Mermaid defaultConfig maxTextSize).
-	# Note: base_overhead includes the markdown fences ("```mermaid\n" and "```\n" = 16 chars),
+	# Note: static_overhead includes the markdown fences ("```mermaid\n" and "```\n" = 16 chars),
 	# which ensures the inner diagram text evaluated by Mermaid is strictly <= 50,000 chars.
 	target_limit = 50000
 	lines_overhead = ""
 	if (enable_cpu == "true") lines_overhead = lines_overhead "    line \"CPU\" []\n"
 	if (enable_mem == "true") lines_overhead = lines_overhead "    line \"RAM\" []\n"
-	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":99999}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
+	static_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
 
-	if (base_overhead + get_points_len(count) <= target_limit) {
+	if (static_overhead + length(700 + count) + get_points_len(count) <= target_limit) {
 		# 100% of all calculated points fit inside the ceiling directly
 		pts = count
 	} else {
@@ -154,7 +154,7 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, ba
 		pts = 2
 		while (low <= high) {
 			mid = int((low + high) / 2)
-			if (base_overhead + get_points_len(mid) <= target_limit) {
+			if (static_overhead + length(700 + mid) + get_points_len(mid) <= target_limit) {
 				pts = mid
 				low = mid + 1
 			} else {
