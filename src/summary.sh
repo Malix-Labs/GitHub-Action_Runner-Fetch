@@ -142,7 +142,7 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, ba
 	lines_overhead = ""
 	if (enable_cpu == "true") lines_overhead = lines_overhead "    line \"CPU\" []\n"
 	if (enable_mem == "true") lines_overhead = lines_overhead "    line \"RAM\" []\n"
-	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":5000}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
+	base_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":99999}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
 
 	if (base_overhead + get_points_len(count) <= target_limit) {
 		# 100% of all calculated points fit inside the ceiling directly
@@ -163,10 +163,9 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, ba
 		}
 	}
 
-	# Dynamically scale canvas width smoothly with point density (1px per sample, capped at 5000px)
+	# Dynamically scale canvas width smoothly with point density (enforcing >= 1px minimum gap per sample)
 	# (wide-chart legend cropping fixed upstream by https://github.com/mermaid-js/mermaid/pull/8284)
 	w = 700 + pts
-	if (w > 5000) w = 5000
 
 	cfg = "%%{init:{\"xyChart\":{\"width\":" w "}}}%%\n"
 
