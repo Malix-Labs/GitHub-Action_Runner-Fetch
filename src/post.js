@@ -1,20 +1,7 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-// Normalize RUNNER_TEMP to forward slashes across platforms (especially Windows)
-if (process.env.RUNNER_TEMP) {
-  process.env.RUNNER_TEMP = process.env.RUNNER_TEMP.replace(/\\/g, '/');
-}
-
-// Normalize GitHub Action input environment variables (hyphen to underscore)
-for (const [key, value] of Object.entries(process.env)) {
-  if (key.startsWith('INPUT_')) {
-    const normalizedKey = key.replace(/-/g, '_');
-    if (!(normalizedKey in process.env)) {
-      process.env[normalizedKey] = value;
-    }
-  }
-}
+require('./env.js');
 
 const summaryScript = path.join(__dirname, 'summary.sh');
 const result = spawnSync('sh', [summaryScript], {
