@@ -1,9 +1,8 @@
-const { spawnSync } = require('child_process');
-const path = require('path');
+import './env.js';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 
-require('./env.js');
-
-const summaryScript = path.join(__dirname, 'summary.sh');
+const summaryScript = path.join(import.meta.dirname, 'summary.sh');
 const result = spawnSync('sh', [summaryScript], {
   stdio: 'inherit',
   env: process.env,

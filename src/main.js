@@ -1,10 +1,9 @@
-const { spawn, spawnSync } = require('child_process');
-const path = require('path');
+import './env.js';
+import { spawn, spawnSync } from 'node:child_process';
+import path from 'node:path';
 
-require('./env.js');
-
-const monitorScript = path.join(__dirname, 'monitor.sh');
-const fetchScript = path.join(__dirname, 'fetch.sh');
+const monitorScript = path.join(import.meta.dirname, 'monitor.sh');
+const fetchScript = path.join(import.meta.dirname, 'fetch.sh');
 
 const enableMonitor = Object.keys(process.env).some(
   (k) => k.startsWith('INPUT_MONITOR_') && process.env[k] === 'true'
