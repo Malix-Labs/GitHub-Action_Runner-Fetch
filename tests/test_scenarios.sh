@@ -272,4 +272,24 @@ if ! grep -q 'line "CPU"' "$RUN_DIR/runner-fetch/chart.mermaid"; then
 fi
 echo "Test 10 PASSED."
 
+echo "=== Test 11: Real GitHub Actions hyphenated input environment variables normalization ==="
+setup_test "test11"
+# Unset all normalized underscore variables to simulate real GitHub runner environment
+unset INPUT_DISK_TREE INPUT_SAMPLE_INTERVAL INPUT_EXPORT_PROMETHEUS INPUT_MONITOR_CPU INPUT_MONITOR_MEMORY INPUT_MONITOR_DISK
+env "INPUT_DISK-TREE=false" "INPUT_SAMPLE-INTERVAL=1" "INPUT_EXPORT-PROMETHEUS=true" "INPUT_MONITOR-CPU=true" "INPUT_MONITOR-MEMORY=true" "INPUT_MONITOR-DISK=false" \
+	sh -c "cd '$REPO_ROOT' && node src/main.js"
+sleep 2
+env "INPUT_DISK-TREE=false" "INPUT_SAMPLE-INTERVAL=1" "INPUT_EXPORT-PROMETHEUS=true" "INPUT_MONITOR-CPU=true" "INPUT_MONITOR-MEMORY=true" "INPUT_MONITOR-DISK=false" \
+	sh -c "cd '$REPO_ROOT' && node src/post.js"
+
+if [ ! -s "$RUN_DIR/runner-fetch/summary.json" ]; then
+	echo "Error: summary.json was not generated in Test 11 with hyphenated inputs" >&2
+	exit 1
+fi
+if [ ! -s "$RUN_DIR/runner-fetch/chart.mermaid" ]; then
+	echo "Error: chart.mermaid was not generated in Test 11 with hyphenated inputs" >&2
+	exit 1
+fi
+echo "Test 11 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="
