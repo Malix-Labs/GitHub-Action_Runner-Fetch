@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: "nix"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 255
+    cooldown:
+      default-days: 1
+    labels:
+      - "Update"
+    commit-message:
+      prefix: "update(nix)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 255
+    cooldown:
+      default-days: 1
+    labels:
+      - "Update"
+    commit-message:
+      prefix: "update(actions)"
