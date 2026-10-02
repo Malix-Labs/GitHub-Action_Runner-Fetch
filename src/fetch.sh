@@ -126,6 +126,17 @@ if [ ! -s "$DISK_TREE_FILE" ]; then
 	DISK_TREE_FILE=""
 fi
 
+# Persist initial storage snapshot and baseline for summary
+STORAGE_FILE="${OUT_DIR}/storage.json"
+if [ ! -f "$STORAGE_FILE" ]; then
+	printf '%s\n' "$STORAGE_JSON" >|"$STORAGE_FILE"
+fi
+
+STORAGE_BASELINE_FILE="${OUT_DIR}/storage_baseline.tsv"
+if [ ! -f "$STORAGE_BASELINE_FILE" ] && command -v df >/dev/null 2>&1; then
+	df -k -P / 2>/dev/null | awk 'NR == 2 { printf "%s\t%s\t%s\n", $2 * 1024, $3 * 1024, $4 * 1024 }' >|"$STORAGE_BASELINE_FILE" || true
+fi
+
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
 	for item in "environment:${ENV_JSON}" "cpu:${CPU_JSON}" "storage:${STORAGE_JSON}" "hardware:${HARDWARE_JSON}" "disk_tree_path:${DISK_TREE_FILE}" "artifact_name:${ARTIFACT_NAME}"; do
 		name="${item%%:*}"

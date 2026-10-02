@@ -41,12 +41,17 @@ RUNNER_NAME="${RUNNER_NAME:-unknown}"
 PROM_TARGET=""
 [ "$INPUT_EXPORT_PROMETHEUS" = "true" ] && PROM_TARGET="$PROM_FILE"
 
+RUNNER_START_EPOCH=""
+if [ -n "${RUNNER_TEMP:-}" ] && [ -d "$RUNNER_TEMP" ]; then
+	RUNNER_START_EPOCH=$(stat -c %Y "$RUNNER_TEMP" 2>/dev/null || stat -f %m "$RUNNER_TEMP" 2>/dev/null || echo "")
+fi
+
 # Truncate output files safely under noclobber (set -C)
 : >|"$CHART_FILE"
 [ -n "$PROM_TARGET" ] && : >|"$PROM_TARGET"
 
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
-STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" '
+STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v runner_start="$RUNNER_START_EPOCH" '
 function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	if (n < 1) return "—"
 	pts = (n > 30 ? 30 : n)
@@ -97,37 +102,51 @@ function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, ma
 	return total_l
 }
 
-function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, static_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg, res, chart_body) {
+function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_min, x_max, target_limit, lines_overhead, static_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg, res, chart_body) {
 	if (enable_cpu != "true" && enable_mem != "true") {
 		return ""
 	}
 
-	dur = (last_epoch > first_epoch ? (last_epoch - first_epoch) : 1)
+	if (runner_start != "" && runner_start > 0 && runner_start <= first_epoch) {
+		job_start = runner_start
+	} else {
+		job_start = first_epoch
+	}
+	offset_start = first_epoch - job_start
+	if (offset_start <= 2) offset_start = 0
+	offset_end = offset_start + (last_epoch > first_epoch ? (last_epoch - first_epoch) : 1)
 
 	# Dynamic human-readable time scaling for X-axis
 	x_title = "Elapsed Time (s)"
-	x_max = dur
-	if (dur >= 86400) {
+	x_min = offset_start
+	x_max = offset_end
+	if (offset_end >= 86400) {
 		x_title = "Elapsed Time (days)"
-		x_max = sprintf("%.2f", dur / 86400)
-		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max)
-		else if (x_max ~ /0$/) sub(/0$/, "", x_max)
-	} else if (dur >= 3600) {
+		x_min = sprintf("%.2f", offset_start / 86400)
+		x_max = sprintf("%.2f", offset_end / 86400)
+		if (x_min ~ /\.00$/) sub(/\.00$/, "", x_min); else if (x_min ~ /0$/) sub(/0$/, "", x_min)
+		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max); else if (x_max ~ /0$/) sub(/0$/, "", x_max)
+	} else if (offset_end >= 3600) {
 		x_title = "Elapsed Time (hours)"
-		x_max = sprintf("%.2f", dur / 3600)
-		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max)
-		else if (x_max ~ /0$/) sub(/0$/, "", x_max)
-	} else if (dur >= 60) {
+		x_min = sprintf("%.2f", offset_start / 3600)
+		x_max = sprintf("%.2f", offset_end / 3600)
+		if (x_min ~ /\.00$/) sub(/\.00$/, "", x_min); else if (x_min ~ /0$/) sub(/0$/, "", x_min)
+		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max); else if (x_max ~ /0$/) sub(/0$/, "", x_max)
+	} else if (offset_end >= 120) {
 		x_title = "Elapsed Time (minutes)"
-		x_max = sprintf("%.1f", dur / 60)
+		x_min = sprintf("%.1f", offset_start / 60)
+		x_max = sprintf("%.1f", offset_end / 60)
+		if (x_min ~ /\.0$/) sub(/\.0$/, "", x_min)
 		if (x_max ~ /\.0$/) sub(/\.0$/, "", x_max)
 	}
+
+	if (offset_start == 0) x_min = "0"
 
 	if (count < 2) {
 		res = "```mermaid\n" \
 			"xychart\n" \
 			"    title \"Resource Utilization Timeline\"\n" \
-			"    x-axis \"" x_title "\" 0 --> " x_max "\n" \
+			"    x-axis \"" x_title "\" " x_min " --> " x_max "\n" \
 			"    y-axis \"Percentage (%)\" 0 --> 100\n"
 		if (enable_cpu == "true") res = res "    line \"CPU\" [" int(cpu_hist[1]) "," int(cpu_hist[1]) "]\n"
 		if (enable_mem == "true") res = res "    line \"RAM\" [" int(mem_hist[1] * 100 / tot_mem) "," int(mem_hist[1] * 100 / tot_mem) "]\n"
@@ -142,7 +161,7 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, st
 	lines_overhead = ""
 	if (enable_cpu == "true") lines_overhead = lines_overhead "    line \"CPU\" []\n"
 	if (enable_mem == "true") lines_overhead = lines_overhead "    line \"RAM\" []\n"
-	static_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" 0 --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
+	static_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" " x_min " --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
 
 	if (static_overhead + length(700 + count) + get_points_len(count) <= target_limit) {
 		# 100% of all calculated points fit inside the ceiling directly
@@ -212,7 +231,7 @@ function build_mermaid(    dur, x_title, x_max, target_limit, lines_overhead, st
 	chart_body = "```mermaid\n" cfg \
 		"xychart\n" \
 		"    title \"Resource Utilization Timeline\"\n" \
-		"    x-axis \"" x_title "\" 0 --> " x_max "\n" \
+		"    x-axis \"" x_title "\" " x_min " --> " x_max "\n" \
 		"    y-axis \"Percentage (%)\" 0 --> 100\n"
 	if (enable_cpu == "true") chart_body = chart_body "    " m_c "\n"
 	if (enable_mem == "true") chart_body = chart_body "    " m_m "\n"
@@ -313,6 +332,14 @@ END {
 	if (tot_mem == 0) tot_mem = 1
 	peak_mem_pct = int((peak_mem * 100) / tot_mem)
 
+	if (runner_start != "" && runner_start > 0 && runner_start <= first_epoch) {
+		job_start = runner_start
+	} else {
+		job_start = first_epoch
+	}
+	offset_start = first_epoch - job_start
+	if (offset_start <= 2) offset_start = 0
+
 	if (chart_file != "") {
 		chart_content = build_mermaid()
 		if (chart_content != "") {
@@ -320,21 +347,94 @@ END {
 		}
 	}
 
-	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
+	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\n",
 		count, duration, avg_cpu, peak_cpu, max_steal,
 		m_init, peak_mem, m_final, tot_mem, peak_mem_pct,
 		d_consumed, oom_count,
 		get_spark(cpu_hist, count, 100),
-		get_spark(mem_hist, count, tot_mem)
+		get_spark(mem_hist, count, tot_mem),
+		offset_start
 }' "$SAMPLES_FILE")
 
 IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
 	MEM_INIT_MB MEM_PEAK_MB MEM_FINAL_MB MEM_TOTAL_MB MEM_PEAK_PCT \
-	DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE <<EOF
+	DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE JOB_OFFSET_SEC <<EOF
 $STATS
 EOF
 
-# 3. Kernel OOM Check
+# 3. Storage Baseline & Pre-installed Bloat Extraction
+STORAGE_BASELINE_FILE="${OUT_DIR}/storage_baseline.tsv"
+ROOT_TOTAL_BYTES=0
+ROOT_USED_BYTES=0
+ROOT_FREE_BYTES=0
+
+if [ -f "$STORAGE_BASELINE_FILE" ]; then
+	IFS='	' read -r ROOT_TOTAL_BYTES ROOT_USED_BYTES ROOT_FREE_BYTES <"$STORAGE_BASELINE_FILE" || true
+fi
+
+if [ -z "$ROOT_TOTAL_BYTES" ] || [ "$ROOT_TOTAL_BYTES" -le 0 ]; then
+	if command -v df >/dev/null 2>&1; then
+		STATS_DF=$(df -k -P / 2>/dev/null | awk 'NR == 2 { printf "%s\t%s\t%s\n", $2 * 1024, $3 * 1024, $4 * 1024 }' || echo "")
+		if [ -n "$STATS_DF" ]; then
+			IFS='	' read -r ROOT_TOTAL_BYTES ROOT_USED_BYTES ROOT_FREE_BYTES <<EOF
+$STATS_DF
+EOF
+		fi
+	fi
+fi
+
+ROOT_TOTAL_GB="0"
+ROOT_USED_GB="0"
+ROOT_FREE_GB="0"
+ROOT_USED_PCT=0
+
+if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
+	STORAGE_FORMAT=$(awk -v tot="$ROOT_TOTAL_BYTES" -v used="$ROOT_USED_BYTES" -v free="$ROOT_FREE_BYTES" 'BEGIN {
+		tot_gb = sprintf("%.1f", tot / 1073741824)
+		used_gb = sprintf("%.1f", used / 1073741824)
+		free_gb = sprintf("%.1f", free / 1073741824)
+		used_pct = int((used * 100) / tot)
+		printf "%s\t%s\t%s\t%d\n", tot_gb, used_gb, free_gb, used_pct
+	}')
+	IFS='	' read -r ROOT_TOTAL_GB ROOT_USED_GB ROOT_FREE_GB ROOT_USED_PCT <<EOF
+$STORAGE_FORMAT
+EOF
+fi
+
+STORAGE_BASELINE_JSON=$(printf '{"total_bytes":%s,"used_bytes":%s,"free_bytes":%s,"preinstalled_bloat_percent":%d}' \
+	"${ROOT_TOTAL_BYTES:-0}" "${ROOT_USED_BYTES:-0}" "${ROOT_FREE_BYTES:-0}" "${ROOT_USED_PCT:-0}")
+
+# 4. Phase Breakdown Extraction
+PHASES_FILE="${OUT_DIR}/phases.tsv"
+PHASES_JSON="[]"
+PHASE_TABLE_ROWS=""
+
+if [ -f "$PHASES_FILE" ]; then
+	PHASE_TABLE_ROWS=$(awk -F'\t' '
+	$1 == "SUMMARY" {
+		name = $2; dur = $3; mem = $4; cpu = $5; disk = $6
+		dur_str = dur "s"
+		if (dur >= 60) {
+			m = int(dur / 60)
+			s = dur % 60
+			dur_str = sprintf("%dm %02ds (%ds)", m, s, dur)
+		}
+		printf "| **%s** | %s | %d MB | %d%% | %d MB |\n", name, dur_str, mem, cpu, disk
+	}' "$PHASES_FILE")
+
+	PHASES_JSON=$(awk -F'\t' '
+	BEGIN { printf "[" }
+	$1 == "SUMMARY" {
+		if (count > 0) printf ","
+		gsub(/"/, "\\\"", $2)
+		printf "{\"name\":\"%s\",\"duration_seconds\":%d,\"peak_memory_mb\":%d,\"avg_cpu_percent\":%d,\"disk_consumed_mb\":%d}", $2, $3, $4, $5, $6
+		count++
+	}
+	END { printf "]" }
+	' "$PHASES_FILE")
+fi
+
+# 5. Kernel OOM Check
 OOM_DETECTED="false"
 OOM_DETAILS=""
 
@@ -374,17 +474,17 @@ if [ "$ENABLE_MEM" = "true" ]; then
 	fi
 fi
 
-# 4. Generate summary.json (Single Source of Truth)
+# 6. Generate summary.json (Single Source of Truth)
 ESCAPED_OOM_DETAILS=$(printf '%s' "$OOM_DETAILS" | tr '\r\n\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-SUMMARY_JSON=$(printf '{"duration_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"disk":{"consumed_mb":%d},"oom_detected":%s,"oom_details":"%s"}' \
-	"$DURATION_SEC" "$SAMPLE_COUNT" \
+SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
+	"$DURATION_SEC" "$JOB_OFFSET_SEC" "$SAMPLE_COUNT" \
 	"$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
 	"$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
-	"$DISK_CONSUMED_MB" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
+	"$DISK_CONSUMED_MB" "$STORAGE_BASELINE_JSON" "$PHASES_JSON" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
 echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
 
-# 5. Write to $GITHUB_STEP_SUMMARY
+# 7. Write to $GITHUB_STEP_SUMMARY
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 	{
 		echo "## 📊 Runner Telemetry & Resource Summary"
@@ -400,9 +500,26 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		echo "| :--- | :--- | :--- | :--- | :--- |"
 		[ "$ENABLE_CPU" = "true" ] && echo "| **CPU Utilization** | — | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
 		[ "$ENABLE_MEM" = "true" ] && echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
-		[ "$ENABLE_DISK" = "true" ] && echo "| **Disk Consumed** | — | Net: **${DISK_CONSUMED_MB} MB** | — | — |"
+		if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
+			if [ "$ENABLE_DISK" = "true" ]; then
+				echo "| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | — |"
+			else
+				echo "| **Disk Storage Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | — | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | — |"
+			fi
+		elif [ "$ENABLE_DISK" = "true" ]; then
+			echo "| **Disk Consumed** | — | Net: **${DISK_CONSUMED_MB} MB** | — | — |"
+		fi
 		[ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | — | **${CPU_STEAL_MAX}%** ⚠️ | Hypervisor throttling detected | — |"
 		echo ""
+		if [ -n "$PHASE_TABLE_ROWS" ]; then
+			echo "### ⏱️ Phase Breakdown"
+			echo ""
+			echo "| Phase | Duration | Peak RAM | Avg CPU | Disk Consumed |"
+			echo "| :--- | :--- | :--- | :--- | :--- |"
+			echo "$PHASE_TABLE_ROWS"
+			echo "| **Total Job** | ${DURATION_SEC}s | ${MEM_PEAK_MB} MB | ${CPU_AVG}% | ${DISK_CONSUMED_MB} MB |"
+			echo ""
+		fi
 		if [ -s "$CHART_FILE" ]; then
 			echo "### Resource Utilization Timeline"
 			echo ""
@@ -410,7 +527,11 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 			echo ""
 		fi
 		HUMAN_DUR=$(printf "%02d:%02d:%02d:%02d" "$((DURATION_SEC / 86400))" "$(((DURATION_SEC % 86400) / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")
-		echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
+		if [ "$JOB_OFFSET_SEC" -gt 0 ]; then
+			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples · started +${JOB_OFFSET_SEC}s after job start)*"
+		else
+			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
+		fi
 		echo ""
 	} >>"$GITHUB_STEP_SUMMARY"
 fi
