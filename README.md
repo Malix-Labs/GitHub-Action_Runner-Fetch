@@ -118,6 +118,13 @@ steps:
 | `phase_peak_memory_mb` | Peak RAM usage in megabytes during the phase |
 | `phase_avg_cpu_percent` | Average CPU utilization percentage during the phase |
 | `phase_disk_consumed_mb` | Net disk space consumed in megabytes during the phase |
+| `peak_swap_mb` | Peak swap usage in megabytes observed during the job |
+| `network_rx_mb` | Total network data received in megabytes during the job |
+| `network_tx_mb` | Total network data transmitted in megabytes during the job |
+| `disk_read_mb` | Total disk data read in megabytes during the job |
+| `disk_write_mb` | Total disk data written in megabytes during the job |
+| `peak_gpu_percent` | Peak GPU core utilization percentage during the job |
+| `peak_vram_mb` | Peak GPU VRAM usage in megabytes during the job |
 
 ## Why is Node 24 used instead of a pure composite action?
 
