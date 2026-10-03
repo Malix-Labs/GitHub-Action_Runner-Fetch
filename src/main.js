@@ -14,7 +14,8 @@ fs.mkdirSync(outDir, { recursive: true });
 const initDoneFile = path.join(outDir, 'init_done');
 const isPhaseStep = Boolean(
   (process.env.INPUT_PHASE_START && process.env.INPUT_PHASE_START.trim()) ||
-    (process.env.INPUT_PHASE_END && process.env.INPUT_PHASE_END.trim())
+    (process.env.INPUT_PHASE_END && process.env.INPUT_PHASE_END.trim()) ||
+    (process.env.INPUT_MILESTONE && process.env.INPUT_MILESTONE.trim())
 );
 
 const isAlreadyInitialized = fs.existsSync(initDoneFile);

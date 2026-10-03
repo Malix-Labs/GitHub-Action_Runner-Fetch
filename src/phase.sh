@@ -8,8 +8,45 @@ SAMPLES_FILE="${OUT_DIR}/samples.tsv"
 
 PHASE_START="${INPUT_PHASE_START:-}"
 PHASE_END="${INPUT_PHASE_END:-}"
+MILESTONE="${INPUT_MILESTONE:-}"
 
 NOW=$(date +%s)
+
+if [ -n "$MILESTONE" ]; then
+	M_CPU=0
+	M_MEM=0
+	M_DISK=0
+	if [ -f "$SAMPLES_FILE" ]; then
+		LAST_LINE=$(tail -n 1 "$SAMPLES_FILE" 2>/dev/null || true)
+		case "$LAST_LINE" in
+		"" | epoch*) ;;
+		*)
+			M_CPU=$(echo "$LAST_LINE" | awk -F'\t' '{print int($6)}')
+			M_MEM=$(echo "$LAST_LINE" | awk -F'\t' '{print int($7)}')
+			M_DISK=$(echo "$LAST_LINE" | awk -F'\t' '{print int($9)}')
+			;;
+		esac
+	fi
+	if [ "$M_MEM" -eq 0 ] && [ -r /proc/meminfo ]; then
+		M_MEM=$(awk '/MemTotal:/ {tot=$2} /MemAvailable:/ {avail=$2} END {print int((tot-avail)/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+	fi
+	if [ "$M_DISK" -eq 0 ] && command -v df >/dev/null 2>&1; then
+		M_DISK=$(df -k -P / 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}' || echo 0)
+	fi
+
+	printf "MILESTONE\t%s\t%d\t%d\t%d\t%d\n" "$MILESTONE" "$NOW" "${M_MEM:-0}" "${M_CPU:-0}" "${M_DISK:-0}" >>"$PHASES_FILE"
+	echo "Runner Telemetry: Marked milestone '${MILESTONE}' at epoch ${NOW}"
+
+	if [ -n "${GITHUB_OUTPUT:-}" ]; then
+		{
+			printf "milestone_name=%s\n" "$MILESTONE"
+			printf "milestone_timestamp=%s\n" "$NOW"
+			printf "milestone_memory_mb=%s\n" "${M_MEM:-0}"
+			printf "milestone_cpu_percent=%s\n" "${M_CPU:-0}"
+			printf "milestone_disk_free_mb=%s\n" "${M_DISK:-0}"
+		} >>"$GITHUB_OUTPUT"
+	fi
+fi
 
 # Handle phase end first so that steps transitioning between phases complete the preceding phase before starting the next.
 if [ -n "$PHASE_END" ]; then
@@ -62,7 +99,7 @@ EOF
 	fi
 
 	# Persist summary line for post summary breakdown table
-	printf "SUMMARY\t%s\t%d\t%d\t%d\t%d\n" "$PHASE_END" "$PHASE_DUR" "$PHASE_PEAK_MEM" "$PHASE_AVG_CPU" "$PHASE_DISK_CONSUMED" >>"$PHASES_FILE"
+	printf "SUMMARY\t%s\t%d\t%d\t%d\t%d\t%d\t%d\n" "$PHASE_END" "$PHASE_DUR" "$PHASE_PEAK_MEM" "$PHASE_AVG_CPU" "$PHASE_DISK_CONSUMED" "${START_EPOCH:-$NOW}" "$NOW" >>"$PHASES_FILE"
 
 	if [ -n "${GITHUB_OUTPUT:-}" ]; then
 		{

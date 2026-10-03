@@ -641,4 +641,103 @@ if (!summary.gpu || summary.gpu.peak_percent !== 95 || summary.gpu.average_perce
 "
 echo "Test 18 PASSED."
 
+echo "=== Test 19: Instantaneous milestone tracking and companion Gantt chart ==="
+setup_test "test19"
+mkdir -p "$RUN_DIR/runner-fetch"
+
+# Step 1: Initial invocation starting Setup phase
+export INPUT_PHASE_START="Setup"
+export INPUT_PHASE_END=""
+export INPUT_MILESTONE=""
+export GITHUB_OUTPUT="$RUN_DIR/output_step1.txt"
+: >|"$GITHUB_OUTPUT"
+(cd "$REPO_ROOT" && node src/main.js)
+
+if [ -f "$RUN_DIR/runner-fetch/monitor.pid" ]; then
+	kill -9 "$(cat "$RUN_DIR/runner-fetch/monitor.pid")" 2>/dev/null || true
+	rm -f "$RUN_DIR/runner-fetch/monitor.pid"
+fi
+
+t0=$(date +%s)
+printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\n" >|"$RUN_DIR/runner-fetch/samples.tsv"
+printf "%d\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\n" "$((t0 - 4))" >>"$RUN_DIR/runner-fetch/samples.tsv"
+printf "%d\t15\t15\t0\t0\t30\t2500\t5500\t49800\t0\n" "$((t0 - 2))" >>"$RUN_DIR/runner-fetch/samples.tsv"
+
+# Step 2: Milestone recording
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END=""
+export INPUT_MILESTONE="Cache Restored"
+export GITHUB_OUTPUT="$RUN_DIR/output_milestone.txt"
+: >|"$GITHUB_OUTPUT"
+(cd "$REPO_ROOT" && node src/main.js)
+
+if ! grep -q "milestone_name=Cache Restored" "$GITHUB_OUTPUT"; then
+	echo "Error: milestone_name=Cache Restored missing in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+if ! grep -q "milestone_memory_mb=2500" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected milestone_memory_mb=2500 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+# Step 3: Phase End
+export INPUT_MILESTONE=""
+export INPUT_PHASE_END="Setup"
+export GITHUB_OUTPUT="$RUN_DIR/output_phase_end.txt"
+: >|"$GITHUB_OUTPUT"
+(cd "$REPO_ROOT" && node src/main.js)
+
+# Step 4: Summary generation (post.js)
+export STATE_is_primary_init="true"
+(cd "$REPO_ROOT" && node src/post.js)
+
+if [ ! -s "$RUN_DIR/runner-fetch/gantt.mermaid" ]; then
+	echo "Error: gantt.mermaid file missing or empty" >&2
+	exit 1
+fi
+
+if ! grep -q "useWidth" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
+	echo "Error: useWidth missing in gantt.mermaid" >&2
+	cat "$RUN_DIR/runner-fetch/gantt.mermaid" >&2
+	exit 1
+fi
+
+if ! grep -q "Cache Restored : milestone" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
+	echo "Error: Milestone 'Cache Restored' missing in gantt.mermaid" >&2
+	cat "$RUN_DIR/runner-fetch/gantt.mermaid" >&2
+	exit 1
+fi
+
+if ! grep -q "Setup : active" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
+	echo "Error: Phase 'Setup' missing in gantt.mermaid" >&2
+	cat "$RUN_DIR/runner-fetch/gantt.mermaid" >&2
+	exit 1
+fi
+
+if ! grep -q "📍 \*\*Cache Restored\*\*" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Milestone row missing in GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+node -e "
+const fs = require('fs');
+const summary = JSON.parse(fs.readFileSync('$RUN_DIR/runner-fetch/summary.json', 'utf8'));
+if (!Array.isArray(summary.milestones) || summary.milestones.length !== 1) {
+  console.error('Error: summary.milestones invalid:', summary.milestones);
+  process.exit(1);
+}
+if (summary.milestones[0].name !== 'Cache Restored' || summary.milestones[0].memory_mb !== 2500) {
+  console.error('Error: milestone content mismatch:', summary.milestones[0]);
+  process.exit(1);
+}
+if (!Array.isArray(summary.phases) || summary.phases.length !== 1 || summary.phases[0].name !== 'Setup') {
+  console.error('Error: summary.phases invalid:', summary.phases);
+  process.exit(1);
+}
+"
+echo "Test 19 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

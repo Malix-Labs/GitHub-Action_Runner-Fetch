@@ -7,6 +7,7 @@ SAMPLES_FILE="${OUT_DIR}/samples.tsv"
 SUMMARY_FILE="${OUT_DIR}/summary.json"
 PROM_FILE="${OUT_DIR}/metrics.prom"
 CHART_FILE="${OUT_DIR}/chart.mermaid"
+GANTT_FILE="${OUT_DIR}/gantt.mermaid"
 
 # 1. Stop background monitor daemon if running
 if [ -f "$PID_FILE" ]; then
@@ -52,6 +53,7 @@ fi
 
 # Truncate output files safely under noclobber (set -C)
 : >|"$CHART_FILE"
+: >|"$GANTT_FILE"
 [ -n "$PROM_TARGET" ] && : >|"$PROM_TARGET"
 
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
@@ -189,6 +191,7 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 	# Dynamically scale canvas width smoothly with point density (enforcing >= 1px minimum gap per sample)
 	# (wide-chart legend cropping fixed upstream by https://github.com/mermaid-js/mermaid/pull/8284)
 	w = 700 + pts
+	last_chart_w = w
 
 	cfg = "%%{init:{\"xyChart\":{\"width\":" w "}}}%%\n"
 
@@ -459,7 +462,7 @@ END {
 		}
 	}
 
-	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n",
+	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s\t%d\n",
 		count, duration, avg_cpu, peak_cpu, max_steal,
 		m_init, peak_mem, m_final, tot_mem, peak_mem_pct,
 		d_consumed, oom_count,
@@ -471,7 +474,8 @@ END {
 		tot_rx, tot_tx, net_spark,
 		tot_dr, tot_dw, dio_spark,
 		avg_gpu, peak_gpu, peak_vram, last_vram_tot,
-		gpu_spark, vram_spark
+		gpu_spark, vram_spark,
+		(last_chart_w > 0 ? last_chart_w : 700 + count)
 }' "$SAMPLES_FILE")
 
 IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
@@ -480,9 +484,11 @@ IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
 	SWAP_INIT_MB SWAP_PEAK_MB SWAP_FINAL_MB SWAP_TOTAL_MB SWAP_SPARKLINE \
 	NET_RX_MB NET_TX_MB NET_SPARKLINE \
 	DISK_READ_MB DISK_WRITE_MB DISK_IO_SPARKLINE \
-	GPU_AVG GPU_PEAK VRAM_PEAK_MB VRAM_TOTAL_MB GPU_SPARKLINE VRAM_SPARKLINE <<EOF
+	GPU_AVG GPU_PEAK VRAM_PEAK_MB VRAM_TOTAL_MB GPU_SPARKLINE VRAM_SPARKLINE CHART_WIDTH <<EOF
 $STATS
 EOF
+
+CHART_WIDTH="${CHART_WIDTH:-1000}"
 
 SWAP_INIT_MB="${SWAP_INIT_MB:-0}"
 SWAP_PEAK_MB="${SWAP_PEAK_MB:-0}"
@@ -544,13 +550,14 @@ fi
 STORAGE_BASELINE_JSON=$(printf '{"total_bytes":%s,"used_bytes":%s,"free_bytes":%s,"preinstalled_bloat_percent":%d}' \
 	"${ROOT_TOTAL_BYTES:-0}" "${ROOT_USED_BYTES:-0}" "${ROOT_FREE_BYTES:-0}" "${ROOT_USED_PCT:-0}")
 
-# 4. Phase Breakdown Extraction
+# 4. Phase & Milestone Extraction & Companion Gantt Chart
 PHASES_FILE="${OUT_DIR}/phases.tsv"
 PHASES_JSON="[]"
+MILESTONES_JSON="[]"
 PHASE_TABLE_ROWS=""
 
 if [ -f "$PHASES_FILE" ]; then
-	PHASE_TABLE_ROWS=$(awk -F'\t' '
+	PHASE_TABLE_ROWS=$(awk -F'\t' -v job_start="${RUNNER_START_EPOCH:-0}" '
 	$1 == "SUMMARY" {
 		name = $2; dur = $3; mem = $4; cpu = $5; disk = $6
 		dur_str = dur "s"
@@ -560,6 +567,19 @@ if [ -f "$PHASES_FILE" ]; then
 			dur_str = sprintf("%dm %02ds (%ds)", m, s, dur)
 		}
 		printf "| **%s** | %s | %d MB | %d%% | %d MB |\n", name, dur_str, mem, cpu, disk
+	}
+	$1 == "MILESTONE" {
+		name = $2; epoch = $3; mem = $4; cpu = $5; disk = $6
+		off = (job_start > 0 ? epoch - job_start : 0)
+		if (off < 0) off = 0
+		off_str = sprintf("+%ds", off)
+		if (off >= 60) {
+			m = int(off / 60)
+			s = off % 60
+			off_str = sprintf("+%dm %02ds", m, s)
+		}
+		disk_str = (disk > 0 ? sprintf("%d MB free", disk) : "—")
+		printf "| 📍 **%s** | *Milestone* (%s) | %d MB | %d%% | %s |\n", name, off_str, mem, cpu, disk_str
 	}' "$PHASES_FILE")
 
 	PHASES_JSON=$(awk -F'\t' '
@@ -572,6 +592,79 @@ if [ -f "$PHASES_FILE" ]; then
 	}
 	END { printf "]" }
 	' "$PHASES_FILE")
+
+	MILESTONES_JSON=$(awk -F'\t' -v job_start="${RUNNER_START_EPOCH:-0}" '
+	BEGIN { printf "[" }
+	$1 == "MILESTONE" {
+		if (count > 0) printf ","
+		gsub(/"/, "\\\"", $2)
+		off = (job_start > 0 ? $3 - job_start : 0)
+		if (off < 0) off = 0
+		printf "{\"name\":\"%s\",\"timestamp\":%d,\"offset_seconds\":%d,\"memory_mb\":%d,\"cpu_percent\":%d,\"disk_free_mb\":%d}", $2, $3, off, $4, $5, $6
+		count++
+	}
+	END { printf "]" }
+	' "$PHASES_FILE")
+
+	GANTT_CONTENT=$(awk -F'\t' -v w="${CHART_WIDTH:-1000}" -v job_start="${RUNNER_START_EPOCH:-0}" '
+	BEGIN {
+		has_items = 0
+		phase_count = 0
+		milestone_count = 0
+	}
+	$1 == "START" {
+		start_times[$3] = $2
+	}
+	$1 == "SUMMARY" {
+		name = $2
+		s = (NF >= 7 && $7 > 0) ? $7 : (start_times[name] > 0 ? start_times[name] : 0)
+		e = (NF >= 8 && $8 > 0) ? $8 : (s + $3)
+		if (job_start > 0) {
+			s = s - job_start
+			e = e - job_start
+		}
+		if (s < 0) s = 0
+		if (e <= s) e = s + 1
+		gsub(/:/, "-", name)
+		phase_count++
+		phases[phase_count] = sprintf("    %s : active, %d, %d\n", name, s, e)
+		has_items = 1
+	}
+	$1 == "MILESTONE" {
+		name = $2
+		t = $3
+		if (job_start > 0) {
+			t = t - job_start
+		}
+		if (t < 0) t = 0
+		gsub(/:/, "-", name)
+		milestone_count++
+		milestones[milestone_count] = sprintf("    %s : milestone, %d, %d\n", name, t, t)
+		has_items = 1
+	}
+	END {
+		if (has_items == 1) {
+			printf "```mermaid\n"
+			printf "%%%%{init:{\"gantt\":{\"useWidth\":%d,\"useMaxWidth\":false}}}%%%%\n", (w > 0 ? w : 1000)
+			printf "gantt\n"
+			printf "    title Workflow Phases & Milestones\n"
+			printf "    dateFormat X\n"
+			printf "    axisFormat %%s\n"
+			if (phase_count > 0) {
+				printf "    section Phases\n"
+				for (i = 1; i <= phase_count; i++) printf "%s", phases[i]
+			}
+			if (milestone_count > 0) {
+				printf "    section Milestones\n"
+				for (i = 1; i <= milestone_count; i++) printf "%s", milestones[i]
+			}
+			printf "```\n"
+		}
+	}' "$PHASES_FILE")
+
+	if [ -n "$GANTT_CONTENT" ]; then
+		echo "$GANTT_CONTENT" >|"$GANTT_FILE"
+	fi
 fi
 
 # 5. Kernel OOM Check
@@ -616,7 +709,7 @@ fi
 
 # 6. Generate summary.json (Single Source of Truth)
 ESCAPED_OOM_DETAILS=$(printf '%s' "$OOM_DETAILS" | tr '\r\n\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"swap":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d},"network":{"rx_mb":%d,"tx_mb":%d},"disk_io":{"read_mb":%d,"write_mb":%d},"gpu":{"average_percent":%d,"peak_percent":%d,"peak_vram_mb":%d,"total_vram_mb":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
+SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"swap":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d},"network":{"rx_mb":%d,"tx_mb":%d},"disk_io":{"read_mb":%d,"write_mb":%d},"gpu":{"average_percent":%d,"peak_percent":%d,"peak_vram_mb":%d,"total_vram_mb":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"milestones":%s,"oom_detected":%s,"oom_details":"%s"}' \
 	"$DURATION_SEC" "$JOB_OFFSET_SEC" "$SAMPLE_COUNT" \
 	"$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
 	"$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
@@ -624,7 +717,7 @@ SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_c
 	"$NET_RX_MB" "$NET_TX_MB" \
 	"$DISK_READ_MB" "$DISK_WRITE_MB" \
 	"$GPU_AVG" "$GPU_PEAK" "$VRAM_PEAK_MB" "$VRAM_TOTAL_MB" \
-	"$DISK_CONSUMED_MB" "$STORAGE_BASELINE_JSON" "$PHASES_JSON" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
+	"$DISK_CONSUMED_MB" "$STORAGE_BASELINE_JSON" "$PHASES_JSON" "$MILESTONES_JSON" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
 echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
 
@@ -663,7 +756,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		if [ -n "$PHASE_TABLE_ROWS" ]; then
 			echo "### ⏱️ Phase Breakdown"
 			echo ""
-			echo "| Phase | Duration | Peak RAM | Avg CPU | Disk Consumed |"
+			echo "| Phase / Milestone | Duration / Offset | Peak RAM | Avg CPU | Disk Consumed / Free |"
 			echo "| :--- | :--- | :--- | :--- | :--- |"
 			echo "$PHASE_TABLE_ROWS"
 			echo "| **Total Job** | ${DURATION_SEC}s | ${MEM_PEAK_MB} MB | ${CPU_AVG}% | ${DISK_CONSUMED_MB} MB |"
@@ -673,6 +766,15 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 			echo "### Resource Utilization Timeline"
 			echo ""
 			cat "$CHART_FILE"
+			echo ""
+			if [ -s "$GANTT_FILE" ]; then
+				cat "$GANTT_FILE"
+				echo ""
+			fi
+		elif [ -s "$GANTT_FILE" ]; then
+			echo "### Resource Utilization Timeline"
+			echo ""
+			cat "$GANTT_FILE"
 			echo ""
 		fi
 		HUMAN_DUR=$(printf "%02d:%02d:%02d:%02d" "$((DURATION_SEC / 86400))" "$(((DURATION_SEC % 86400) / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")

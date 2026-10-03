@@ -12,10 +12,11 @@ GitHub Action to inspect and continuously monitor GitHub Actions runner VMs.
 
 ## Features & Highlights
 
-- **Multi-Call Phase Tracking & Milestone Profiling**: Mark specific workflow phases or milestones using `phase-start` and `phase-end`. The action automatically aggregates per-phase metrics (duration, peak RAM, average CPU, net disk consumed) and outputs a consolidated comparison table in `$GITHUB_STEP_SUMMARY`.
+- **Multi-Call Phase Tracking & Milestone Profiling**: Mark execution phases using `phase-start` / `phase-end` or pin instantaneous point events using `milestone`. The action automatically aggregates per-phase metrics, captures telemetry snapshots at milestones, and outputs a consolidated comparison table in `$GITHUB_STEP_SUMMARY`.
+- **Synchronized Companion Gantt Chart**: Generates an aligned Mermaid Gantt chart placed alongside the resource timeline, rendering phases as duration intervals and milestones as markers with matched dynamic canvas widths.
 - **Automated Runner Start-Time Alignment**: Auto-detects runner initialization time from the environment, automatically offsetting the Mermaid timeline X-axis (e.g. `45s --> 120s`) when the action is called late in a workflow run.
 - **Storage Baseline & Pre-installed Bloat Reporting**: Automatically captures initial disk partition capacity, pre-installed software bloat, and net consumption in `$GITHUB_STEP_SUMMARY`.
-- **Phase Breakdown Table**: Automatically renders a dedicated comparison table contrasting each phase's resource profile against the total job.
+- **Phase Breakdown Table**: Automatically renders a dedicated comparison table contrasting each phase's and milestone's resource profile against the total job.
 - **Dynamic Mermaid Budgeting**: Dynamically downsamples high-density metrics using peak-preserving bucketing to stay strictly within Mermaid's 50,000 character ceiling while maintaining exact spike fidelity.
 
 ## Usage
@@ -50,7 +51,7 @@ steps:
 
 ### Multi-Call Phase Tracking & Milestone Profiling
 
-You can mark specific workflow phases or milestones using `phase-start` and `phase-end`. The action automatically aggregates per-phase metrics (duration, peak RAM, average CPU, net disk consumed) and outputs a consolidated Phase Breakdown comparison table in `$GITHUB_STEP_SUMMARY`:
+You can mark execution phases using `phase-start` and `phase-end`, or pin instantaneous point events using `milestone`. The action automatically aggregates per-phase metrics, captures telemetry snapshots at milestones, and outputs a consolidated Phase Breakdown comparison table alongside a companion Mermaid Gantt chart in `$GITHUB_STEP_SUMMARY`:
 
 ```yaml
 steps:
@@ -60,8 +61,15 @@ steps:
     with:
       phase-start: "Setup"
 
-  - name: Install dependencies
+  - name: Restore cache
     run: npm ci
+
+  # Mark an instantaneous milestone
+  - name: Milestone Cache Restored
+    id: milestone-cache
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2
+    with:
+      milestone: "Cache Restored"
 
   # Transition from Setup to Build phase
   - name: End Setup & Start Build
@@ -94,8 +102,9 @@ steps:
 | `monitor-gpu` | Monitor GPU utilization and VRAM (auto-detects `nvidia-smi`) | `false` |
 | `sample-interval` | Telemetry sampling interval in seconds | `2` |
 | `export-prometheus` | Generate standard OpenMetrics / Prometheus (`metrics.prom`) | `true` |
-| `phase-start` | Mark the beginning of a named phase or milestone | `""` |
-| `phase-end` | Mark the completion of a named phase or milestone | `""` |
+| `phase-start` | Mark the beginning of a named execution phase | `""` |
+| `phase-end` | Mark the completion of a named execution phase | `""` |
+| `milestone` | Record an instantaneous workflow milestone or point event | `""` |
 | `disk-tree` | Build recursive directory tree via `dust` | `true` |
 
 ## Outputs
@@ -108,7 +117,7 @@ steps:
 | `hardware` | JSON containing hardware topology and RAM specs |
 | `disk_tree_path` | Path to JSON file containing full recursive filesystem tree (`dust -j`) |
 | `artifact_name` | Deterministic name of the disk tree artifact |
-| `summary` | JSON containing aggregate utilization metrics, storage baseline, phases, and autopsy data |
+| `summary` | JSON containing aggregate utilization metrics, storage baseline, phases, milestones, and autopsy data |
 | `peak_memory_mb` | Peak RAM usage in megabytes observed during the job |
 | `avg_cpu_percent` | Average CPU utilization percentage across the job |
 | `disk_consumed_mb` | Net disk space consumed in megabytes |
@@ -118,6 +127,11 @@ steps:
 | `phase_peak_memory_mb` | Peak RAM usage in megabytes during the phase |
 | `phase_avg_cpu_percent` | Average CPU utilization percentage during the phase |
 | `phase_disk_consumed_mb` | Net disk space consumed in megabytes during the phase |
+| `milestone_name` | Name of the recorded milestone |
+| `milestone_timestamp` | Unix epoch timestamp of the milestone |
+| `milestone_memory_mb` | RAM usage in megabytes at the milestone |
+| `milestone_cpu_percent` | CPU utilization percentage at the milestone |
+| `milestone_disk_free_mb` | Free disk space in megabytes at the milestone |
 | `peak_swap_mb` | Peak swap usage in megabytes observed during the job |
 | `network_rx_mb` | Total network data received in megabytes during the job |
 | `network_tx_mb` | Total network data transmitted in megabytes during the job |

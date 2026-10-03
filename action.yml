@@ -38,10 +38,13 @@ inputs:
     description: "Generate standard OpenMetrics / Prometheus (.prom) metrics file."
     default: "true"
   phase-start:
-    description: "Mark the beginning of a named phase or milestone."
+    description: "Mark the beginning of a named execution phase."
     default: ""
   phase-end:
-    description: "Mark the completion of a named phase or milestone."
+    description: "Mark the completion of a named execution phase."
+    default: ""
+  milestone:
+    description: "Record an instantaneous workflow milestone or point event."
     default: ""
 
 outputs:
@@ -77,6 +80,16 @@ outputs:
     description: "Average CPU utilization percentage during the phase."
   phase_disk_consumed_mb:
     description: "Net disk space consumed in megabytes during the phase."
+  milestone_name:
+    description: "Name of the recorded milestone."
+  milestone_timestamp:
+    description: "Unix epoch timestamp of the milestone."
+  milestone_memory_mb:
+    description: "RAM usage in megabytes at the milestone."
+  milestone_cpu_percent:
+    description: "CPU utilization percentage at the milestone."
+  milestone_disk_free_mb:
+    description: "Free disk space in megabytes at the milestone."
   peak_swap_mb:
     description: "Peak swap usage in megabytes during the job."
   network_rx_mb:
