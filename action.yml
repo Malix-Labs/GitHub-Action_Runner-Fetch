@@ -79,6 +79,10 @@ outputs:
     description: "Net disk space consumed in megabytes during the phase."
   peak_swap_mb:
     description: "Peak swap usage in megabytes during the job."
+  network_rx_mb:
+    description: "Total network data received in megabytes during the job."
+  network_tx_mb:
+    description: "Total network data transmitted in megabytes during the job."
 
 runs:
   using: "node24"

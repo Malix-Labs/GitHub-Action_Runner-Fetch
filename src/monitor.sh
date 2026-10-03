@@ -13,7 +13,7 @@ trap 'exit 0' TERM INT QUIT HUP
 TARGET_OS="${RUNNER_OS:-Linux}"
 
 if [ ! -f "$SAMPLES_FILE" ]; then
-	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\n" >|"$SAMPLES_FILE"
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\n" >|"$SAMPLES_FILE"
 fi
 
 # Pre-resolve OOM kill source once before loop (Linux only)
@@ -51,8 +51,9 @@ ENABLE_CPU="${INPUT_MONITOR_CPU:-true}"
 ENABLE_MEM="${INPUT_MONITOR_MEMORY:-true}"
 ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
 ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
+ENABLE_NET="${INPUT_MONITOR_NETWORK:-false}"
 
-if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ]; then
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ]; then
 	exit 0
 fi
 
@@ -69,6 +70,8 @@ while :; do
 	OOM_KILLS=0
 	SWAP_USED_MB=0
 	SWAP_TOTAL_MB=0
+	NET_RX_MB=0
+	NET_TX_MB=0
 
 	# 1. Target filesystem free disk space (actual workspace mount across all platforms)
 	if [ "$ENABLE_DISK" = "true" ]; then
@@ -164,10 +167,28 @@ while :; do
 		;;
 	esac
 
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+	# 4. Network I/O metrics
+	if [ "$ENABLE_NET" = "true" ]; then
+		if [ -r /proc/net/dev ]; then
+			NET_BYTES=$(awk 'NR > 2 { sub(/:/, " "); if ($1 !~ /^(lo|lo0)$/) { rx += $2; tx += $10 } } END { printf "%d\t%d\n", int(rx/1048576), int(tx/1048576) }' /proc/net/dev 2>/dev/null || echo "0	0")
+			IFS='	' read -r NET_RX_MB NET_TX_MB <<EOF
+$NET_BYTES
+EOF
+		elif [ "$TARGET_OS" = "macOS" ]; then
+			NET_BYTES=$(netstat -ibn 2>/dev/null | awk 'NR > 1 && $1 !~ /^(lo|lo0)/ && $7 ~ /^[0-9]+$/ && $10 ~ /^[0-9]+$/ { rx += $7; tx += $10 } END { printf "%d\t%d\n", int(rx/1048576), int(tx/1048576) }' || echo "0	0")
+			IFS='	' read -r NET_RX_MB NET_TX_MB <<EOF
+$NET_BYTES
+EOF
+		fi
+		NET_RX_MB="${NET_RX_MB:-0}"
+		NET_TX_MB="${NET_TX_MB:-0}"
+	fi
+
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$EPOCH" "$CPU_USER" "$CPU_SYS" "$CPU_STEAL" "$CPU_IOWAIT" "$CPU_TOTAL" \
 		"$MEM_USED_MB" "$MEM_AVAIL_MB" "$DISK_FREE_MB" "$OOM_KILLS" \
-		"$SWAP_USED_MB" "$SWAP_TOTAL_MB" >>"$SAMPLES_FILE"
+		"$SWAP_USED_MB" "$SWAP_TOTAL_MB" \
+		"$NET_RX_MB" "$NET_TX_MB" >>"$SAMPLES_FILE"
 
 	sleep "$SAMPLE_INTERVAL"
 done

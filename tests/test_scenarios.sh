@@ -488,4 +488,51 @@ if (!summary.swap || summary.swap.peak_mb !== 350 || summary.swap.initial_mb !==
 "
 echo "Test 15 PASSED."
 
+echo "=== Test 16: Network I/O monitoring telemetry, outputs, summary table & Prometheus ==="
+setup_test "test16"
+export INPUT_MONITOR_NETWORK="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+{
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\n"
+	printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\t0\t0\t100\t50\n"
+	printf "1789000002\t15\t15\t0\t0\t30\t2500\t5500\t50000\t0\t0\t0\t250\t80\n"
+	printf "1789000004\t10\t10\t0\t0\t20\t2200\t5800\t50000\t0\t0\t0\t320\t110\n"
+} >|"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+
+if ! grep -q "Network I/O" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Network I/O row missing in step summary" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "network_rx_mb=220" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected network_rx_mb=220 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+if ! grep -q "network_tx_mb=60" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected network_tx_mb=60 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+if ! grep -q "runner_network_receive_bytes" "$RUN_DIR/runner-fetch/metrics.prom"; then
+	echo "Error: Expected runner_network_receive_bytes missing in Prometheus metrics" >&2
+	cat "$RUN_DIR/runner-fetch/metrics.prom" >&2
+	exit 1
+fi
+
+node -e "
+const fs = require('fs');
+const summary = JSON.parse(fs.readFileSync('$RUN_DIR/runner-fetch/summary.json', 'utf8'));
+if (!summary.network || summary.network.rx_mb !== 220 || summary.network.tx_mb !== 60) {
+  console.error('Error: Network metrics missing or incorrect in summary.json:', summary.network);
+  process.exit(1);
+}
+"
+echo "Test 16 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="
