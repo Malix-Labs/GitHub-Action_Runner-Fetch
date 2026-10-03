@@ -582,4 +582,63 @@ if (!summary.disk_io || summary.disk_io.read_mb !== 450 || summary.disk_io.write
 "
 echo "Test 17 PASSED."
 
+echo "=== Test 18: GPU utilization and VRAM monitoring telemetry, outputs, summary table & Prometheus ==="
+setup_test "test18"
+export INPUT_MONITOR_GPU="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+{
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\tdisk_read_mb\tdisk_write_mb\tgpu_util_pct\tgpu_vram_used_mb\tgpu_vram_total_mb\n"
+	printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\t0\t0\t0\t0\t0\t0\t20\t2048\t16384\n"
+	printf "1789000002\t15\t15\t0\t0\t30\t2500\t5500\t50000\t0\t0\t0\t0\t0\t0\t0\t95\t8192\t16384\n"
+	printf "1789000004\t10\t10\t0\t0\t20\t2200\t5800\t50000\t0\t0\t0\t0\t0\t0\t0\t35\t6144\t16384\n"
+} >|"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+
+if ! grep -q "GPU Utilization" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: GPU Utilization row missing in step summary" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "GPU VRAM" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: GPU VRAM row missing in step summary" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "peak_gpu_percent=95" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected peak_gpu_percent=95 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+if ! grep -q "peak_vram_mb=8192" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected peak_vram_mb=8192 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+if ! grep -q "runner_gpu_utilization_percent" "$RUN_DIR/runner-fetch/metrics.prom"; then
+	echo "Error: Expected runner_gpu_utilization_percent missing in Prometheus metrics" >&2
+	cat "$RUN_DIR/runner-fetch/metrics.prom" >&2
+	exit 1
+fi
+
+if ! grep -q "runner_gpu_vram_used_bytes" "$RUN_DIR/runner-fetch/metrics.prom"; then
+	echo "Error: Expected runner_gpu_vram_used_bytes missing in Prometheus metrics" >&2
+	cat "$RUN_DIR/runner-fetch/metrics.prom" >&2
+	exit 1
+fi
+
+node -e "
+const fs = require('fs');
+const summary = JSON.parse(fs.readFileSync('$RUN_DIR/runner-fetch/summary.json', 'utf8'));
+if (!summary.gpu || summary.gpu.peak_percent !== 95 || summary.gpu.average_percent !== 50 || summary.gpu.peak_vram_mb !== 8192 || summary.gpu.total_vram_mb !== 16384) {
+  console.error('Error: GPU metrics missing or incorrect in summary.json:', summary.gpu);
+  process.exit(1);
+}
+"
+echo "Test 18 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

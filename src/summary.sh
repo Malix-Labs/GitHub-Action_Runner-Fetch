@@ -29,8 +29,9 @@ ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
 ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 ENABLE_NET="${INPUT_MONITOR_NETWORK:-false}"
 ENABLE_DISK_IO="${INPUT_MONITOR_DISK_IO:-false}"
+ENABLE_GPU="${INPUT_MONITOR_GPU:-false}"
 
-if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ]; then
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ] && [ "$ENABLE_GPU" = "false" ]; then
 	exit 0
 fi
 
@@ -54,7 +55,7 @@ fi
 [ -n "$PROM_TARGET" ] && : >|"$PROM_TARGET"
 
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
-STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v enable_net="$ENABLE_NET" -v enable_disk_io="$ENABLE_DISK_IO" -v runner_start="$RUNNER_START_EPOCH" '
+STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v enable_net="$ENABLE_NET" -v enable_disk_io="$ENABLE_DISK_IO" -v enable_gpu="$ENABLE_GPU" -v runner_start="$RUNNER_START_EPOCH" '
 function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	if (n < 1) return "—"
 	pts = (n > 30 ? 30 : n)
@@ -292,6 +293,14 @@ BEGIN {
 			print "# HELP runner_disk_written_bytes Total disk bytes written" >> prom_file
 			print "# TYPE runner_disk_written_bytes gauge" >> prom_file
 		}
+		if (enable_gpu == "true") {
+			print "# HELP runner_gpu_utilization_percent GPU core utilization percentage" >> prom_file
+			print "# TYPE runner_gpu_utilization_percent gauge" >> prom_file
+			print "# HELP runner_gpu_vram_used_bytes GPU VRAM used in bytes" >> prom_file
+			print "# TYPE runner_gpu_vram_used_bytes gauge" >> prom_file
+			print "# HELP runner_gpu_vram_total_bytes GPU total VRAM in bytes" >> prom_file
+			print "# TYPE runner_gpu_vram_total_bytes gauge" >> prom_file
+		}
 	}
 }
 
@@ -306,6 +315,9 @@ NR > 1 {
 	tx_mb = ($14 != "" ? $14 : 0)
 	dr_mb = ($15 != "" ? $15 : 0)
 	dw_mb = ($16 != "" ? $16 : 0)
+	gpu_u = ($17 != "" ? $17 : 0)
+	vram_u = ($18 != "" ? $18 : 0)
+	vram_t = ($19 != "" ? $19 : 0)
 
 	if (count == 1) {
 		first_epoch = epoch
@@ -319,6 +331,8 @@ NR > 1 {
 		peak_mem = m_used
 		peak_cpu = tot
 		peak_swap = sw_used
+		peak_gpu = gpu_u
+		peak_vram = vram_u
 		max_steal = st
 	}
 
@@ -328,6 +342,11 @@ NR > 1 {
 	if (m_used > peak_mem) peak_mem = m_used
 	if (sw_used > peak_swap) peak_swap = sw_used
 	if (oom > 0) oom_count += oom
+
+	gpu_sum += gpu_u
+	if (gpu_u > peak_gpu) peak_gpu = gpu_u
+	if (vram_u > peak_vram) peak_vram = vram_u
+	last_vram_tot = vram_t
 
 	last_epoch = epoch
 	m_final = m_used
@@ -366,6 +385,8 @@ NR > 1 {
 	cpu_hist[count] = tot
 	mem_hist[count] = m_used
 	swap_hist[count] = sw_used
+	gpu_hist[count] = gpu_u
+	vram_hist[count] = vram_u
 
 	if (prom_file != "") {
 		ts = epoch "000"
@@ -394,6 +415,11 @@ NR > 1 {
 			printf "runner_disk_read_bytes{runner=\"%s\"} %d %s\n", rname, (dr_mb * 1048576), ts >> prom_file
 			printf "runner_disk_written_bytes{runner=\"%s\"} %d %s\n", rname, (dw_mb * 1048576), ts >> prom_file
 		}
+		if (enable_gpu == "true") {
+			printf "runner_gpu_utilization_percent{runner=\"%s\"} %s %s\n", rname, gpu_u, ts >> prom_file
+			printf "runner_gpu_vram_used_bytes{runner=\"%s\"} %d %s\n", rname, (vram_u * 1048576), ts >> prom_file
+			printf "runner_gpu_vram_total_bytes{runner=\"%s\"} %d %s\n", rname, (vram_t * 1048576), ts >> prom_file
+		}
 	}
 }
 
@@ -413,6 +439,10 @@ END {
 	tot_dr = (disk_r_final >= disk_r_init ? disk_r_final - disk_r_init : disk_r_final)
 	tot_dw = (disk_w_final >= disk_w_init ? disk_w_final - disk_w_init : disk_w_final)
 	dio_spark = get_spark(dio_hist, count, (peak_delta_dio > 0 ? peak_delta_dio : 100))
+	avg_gpu = int(gpu_sum / count)
+	vram_max_limit = (last_vram_tot > 0 ? last_vram_tot : (peak_vram > 0 ? peak_vram : 100))
+	gpu_spark = get_spark(gpu_hist, count, 100)
+	vram_spark = get_spark(vram_hist, count, vram_max_limit)
 
 	if (runner_start != "" && runner_start > 0 && runner_start <= first_epoch) {
 		job_start = runner_start
@@ -429,7 +459,7 @@ END {
 		}
 	}
 
-	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%s\n",
+	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n",
 		count, duration, avg_cpu, peak_cpu, max_steal,
 		m_init, peak_mem, m_final, tot_mem, peak_mem_pct,
 		d_consumed, oom_count,
@@ -439,7 +469,9 @@ END {
 		sw_init, peak_swap, sw_final, last_sw_tot,
 		get_spark(swap_hist, count, sw_max_limit),
 		tot_rx, tot_tx, net_spark,
-		tot_dr, tot_dw, dio_spark
+		tot_dr, tot_dw, dio_spark,
+		avg_gpu, peak_gpu, peak_vram, last_vram_tot,
+		gpu_spark, vram_spark
 }' "$SAMPLES_FILE")
 
 IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
@@ -447,7 +479,8 @@ IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
 	DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE JOB_OFFSET_SEC \
 	SWAP_INIT_MB SWAP_PEAK_MB SWAP_FINAL_MB SWAP_TOTAL_MB SWAP_SPARKLINE \
 	NET_RX_MB NET_TX_MB NET_SPARKLINE \
-	DISK_READ_MB DISK_WRITE_MB DISK_IO_SPARKLINE <<EOF
+	DISK_READ_MB DISK_WRITE_MB DISK_IO_SPARKLINE \
+	GPU_AVG GPU_PEAK VRAM_PEAK_MB VRAM_TOTAL_MB GPU_SPARKLINE VRAM_SPARKLINE <<EOF
 $STATS
 EOF
 
@@ -462,6 +495,12 @@ NET_SPARKLINE="${NET_SPARKLINE:-—}"
 DISK_READ_MB="${DISK_READ_MB:-0}"
 DISK_WRITE_MB="${DISK_WRITE_MB:-0}"
 DISK_IO_SPARKLINE="${DISK_IO_SPARKLINE:-—}"
+GPU_AVG="${GPU_AVG:-0}"
+GPU_PEAK="${GPU_PEAK:-0}"
+VRAM_PEAK_MB="${VRAM_PEAK_MB:-0}"
+VRAM_TOTAL_MB="${VRAM_TOTAL_MB:-0}"
+GPU_SPARKLINE="${GPU_SPARKLINE:-—}"
+VRAM_SPARKLINE="${VRAM_SPARKLINE:-—}"
 
 # 3. Storage Baseline & Pre-installed Bloat Extraction
 STORAGE_BASELINE_FILE="${OUT_DIR}/storage_baseline.tsv"
@@ -577,13 +616,14 @@ fi
 
 # 6. Generate summary.json (Single Source of Truth)
 ESCAPED_OOM_DETAILS=$(printf '%s' "$OOM_DETAILS" | tr '\r\n\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"swap":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d},"network":{"rx_mb":%d,"tx_mb":%d},"disk_io":{"read_mb":%d,"write_mb":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
+SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"swap":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d},"network":{"rx_mb":%d,"tx_mb":%d},"disk_io":{"read_mb":%d,"write_mb":%d},"gpu":{"average_percent":%d,"peak_percent":%d,"peak_vram_mb":%d,"total_vram_mb":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
 	"$DURATION_SEC" "$JOB_OFFSET_SEC" "$SAMPLE_COUNT" \
 	"$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
 	"$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
 	"$SWAP_INIT_MB" "$SWAP_PEAK_MB" "$SWAP_FINAL_MB" "$SWAP_TOTAL_MB" \
 	"$NET_RX_MB" "$NET_TX_MB" \
 	"$DISK_READ_MB" "$DISK_WRITE_MB" \
+	"$GPU_AVG" "$GPU_PEAK" "$VRAM_PEAK_MB" "$VRAM_TOTAL_MB" \
 	"$DISK_CONSUMED_MB" "$STORAGE_BASELINE_JSON" "$PHASES_JSON" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
 echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
@@ -607,6 +647,8 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		[ "$ENABLE_SWAP" = "true" ] && echo "| **Swap Usage** | ${SWAP_INIT_MB} MB | **${SWAP_PEAK_MB} MB** | ${SWAP_FINAL_MB} MB / ${SWAP_TOTAL_MB} MB | \`${SWAP_SPARKLINE}\` |"
 		[ "$ENABLE_NET" = "true" ] && echo "| **Network I/O** | — | RX: **${NET_RX_MB} MB** | TX: **${NET_TX_MB} MB** | \`${NET_SPARKLINE}\` |"
 		[ "$ENABLE_DISK_IO" = "true" ] && echo "| **Disk I/O** | — | Read: **${DISK_READ_MB} MB** | Write: **${DISK_WRITE_MB} MB** | \`${DISK_IO_SPARKLINE}\` |"
+		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU Utilization** | — | **${GPU_PEAK}%** | Avg: **${GPU_AVG}%** | \`${GPU_SPARKLINE}\` |"
+		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU VRAM** | — | **${VRAM_PEAK_MB} MB** | Total: ${VRAM_TOTAL_MB} MB | \`${VRAM_SPARKLINE}\` |"
 		if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
 			if [ "$ENABLE_DISK" = "true" ]; then
 				echo "| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | — |"
@@ -654,6 +696,8 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
 		printf "network_tx_mb=%s\n" "$NET_TX_MB"
 		printf "disk_read_mb=%s\n" "$DISK_READ_MB"
 		printf "disk_write_mb=%s\n" "$DISK_WRITE_MB"
+		printf "peak_gpu_percent=%s\n" "$GPU_PEAK"
+		printf "peak_vram_mb=%s\n" "$VRAM_PEAK_MB"
 		printf "oom_detected=%s\n" "$OOM_DETECTED"
 		printf 'summary<<EOF_SUMMARY\n%s\nEOF_SUMMARY\n' "$SUMMARY_JSON"
 	} >>"$GITHUB_OUTPUT"

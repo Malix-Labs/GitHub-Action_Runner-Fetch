@@ -13,7 +13,7 @@ trap 'exit 0' TERM INT QUIT HUP
 TARGET_OS="${RUNNER_OS:-Linux}"
 
 if [ ! -f "$SAMPLES_FILE" ]; then
-	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\tdisk_read_mb\tdisk_write_mb\n" >|"$SAMPLES_FILE"
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\tdisk_read_mb\tdisk_write_mb\tgpu_util_pct\tgpu_vram_used_mb\tgpu_vram_total_mb\n" >|"$SAMPLES_FILE"
 fi
 
 # Pre-resolve OOM kill source once before loop (Linux only)
@@ -40,6 +40,10 @@ if [ "$TARGET_OS" = "macOS" ]; then
 	HW_PAGESIZE=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096)
 fi
 
+# Pre-resolve GPU tools
+HAS_NVIDIA_SMI="false"
+command -v nvidia-smi >/dev/null 2>&1 && HAS_NVIDIA_SMI="true"
+
 PREV_USER=0
 PREV_NICE=0
 PREV_SYS=0
@@ -53,8 +57,9 @@ ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
 ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 ENABLE_NET="${INPUT_MONITOR_NETWORK:-false}"
 ENABLE_DISK_IO="${INPUT_MONITOR_DISK_IO:-false}"
+ENABLE_GPU="${INPUT_MONITOR_GPU:-false}"
 
-if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ]; then
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ] && [ "$ENABLE_GPU" = "false" ]; then
 	exit 0
 fi
 
@@ -75,6 +80,9 @@ while :; do
 	NET_TX_MB=0
 	DISK_READ_MB=0
 	DISK_WRITE_MB=0
+	GPU_UTIL=0
+	VRAM_USED_MB=0
+	VRAM_TOTAL_MB=0
 
 	# 1. Target filesystem free disk space (actual workspace mount across all platforms)
 	if [ "$ENABLE_DISK" = "true" ]; then
@@ -212,12 +220,31 @@ EOF
 		DISK_WRITE_MB="${DISK_WRITE_MB:-0}"
 	fi
 
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+	# 6. GPU metrics (NVIDIA)
+	if [ "$ENABLE_GPU" = "true" ] && [ "$HAS_NVIDIA_SMI" = "true" ]; then
+		GPU_STATS=$(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null | awk -F',' '{
+			u = int($1); m_u = int($2); m_t = int($3)
+			if (u > max_u) max_u = u
+			tot_used += m_u
+			tot_total += m_t
+		} END {
+			printf "%d\t%d\t%d\n", max_u, tot_used, tot_total
+		}' || echo "0	0	0")
+		IFS='	' read -r GPU_UTIL VRAM_USED_MB VRAM_TOTAL_MB <<EOF
+$GPU_STATS
+EOF
+		GPU_UTIL="${GPU_UTIL:-0}"
+		VRAM_USED_MB="${VRAM_USED_MB:-0}"
+		VRAM_TOTAL_MB="${VRAM_TOTAL_MB:-0}"
+	fi
+
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$EPOCH" "$CPU_USER" "$CPU_SYS" "$CPU_STEAL" "$CPU_IOWAIT" "$CPU_TOTAL" \
 		"$MEM_USED_MB" "$MEM_AVAIL_MB" "$DISK_FREE_MB" "$OOM_KILLS" \
 		"$SWAP_USED_MB" "$SWAP_TOTAL_MB" \
 		"$NET_RX_MB" "$NET_TX_MB" \
-		"$DISK_READ_MB" "$DISK_WRITE_MB" >>"$SAMPLES_FILE"
+		"$DISK_READ_MB" "$DISK_WRITE_MB" \
+		"$GPU_UTIL" "$VRAM_USED_MB" "$VRAM_TOTAL_MB" >>"$SAMPLES_FILE"
 
 	sleep "$SAMPLE_INTERVAL"
 done

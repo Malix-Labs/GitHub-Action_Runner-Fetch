@@ -87,6 +87,10 @@ outputs:
     description: "Total disk data read in megabytes during the job."
   disk_write_mb:
     description: "Total disk data written in megabytes during the job."
+  peak_gpu_percent:
+    description: "Peak GPU core utilization percentage during the job."
+  peak_vram_mb:
+    description: "Peak GPU VRAM usage in megabytes during the job."
 
 runs:
   using: "node24"
