@@ -535,4 +535,51 @@ if (!summary.network || summary.network.rx_mb !== 220 || summary.network.tx_mb !
 "
 echo "Test 16 PASSED."
 
+echo "=== Test 17: Disk I/O monitoring telemetry, outputs, summary table & Prometheus ==="
+setup_test "test17"
+export INPUT_MONITOR_DISK_IO="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+{
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\tdisk_read_mb\tdisk_write_mb\n"
+	printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\t0\t0\t0\t0\t500\t200\n"
+	printf "1789000002\t15\t15\t0\t0\t30\t2500\t5500\t50000\t0\t0\t0\t0\t0\t800\t450\n"
+	printf "1789000004\t10\t10\t0\t0\t20\t2200\t5800\t50000\t0\t0\t0\t0\t0\t950\t600\n"
+} >|"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+
+if ! grep -q "Disk I/O" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Disk I/O row missing in step summary" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "disk_read_mb=450" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected disk_read_mb=450 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+if ! grep -q "disk_write_mb=400" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected disk_write_mb=400 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+if ! grep -q "runner_disk_read_bytes" "$RUN_DIR/runner-fetch/metrics.prom"; then
+	echo "Error: Expected runner_disk_read_bytes missing in Prometheus metrics" >&2
+	cat "$RUN_DIR/runner-fetch/metrics.prom" >&2
+	exit 1
+fi
+
+node -e "
+const fs = require('fs');
+const summary = JSON.parse(fs.readFileSync('$RUN_DIR/runner-fetch/summary.json', 'utf8'));
+if (!summary.disk_io || summary.disk_io.read_mb !== 450 || summary.disk_io.write_mb !== 400) {
+  console.error('Error: Disk I/O metrics missing or incorrect in summary.json:', summary.disk_io);
+  process.exit(1);
+}
+"
+echo "Test 17 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

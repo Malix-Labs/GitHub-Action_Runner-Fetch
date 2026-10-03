@@ -28,8 +28,9 @@ ENABLE_MEM="${INPUT_MONITOR_MEMORY:-true}"
 ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
 ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 ENABLE_NET="${INPUT_MONITOR_NETWORK:-false}"
+ENABLE_DISK_IO="${INPUT_MONITOR_DISK_IO:-false}"
 
-if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ]; then
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ]; then
 	exit 0
 fi
 
@@ -53,7 +54,7 @@ fi
 [ -n "$PROM_TARGET" ] && : >|"$PROM_TARGET"
 
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
-STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v enable_net="$ENABLE_NET" -v runner_start="$RUNNER_START_EPOCH" '
+STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v enable_net="$ENABLE_NET" -v enable_disk_io="$ENABLE_DISK_IO" -v runner_start="$RUNNER_START_EPOCH" '
 function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	if (n < 1) return "—"
 	pts = (n > 30 ? 30 : n)
@@ -285,6 +286,12 @@ BEGIN {
 			print "# HELP runner_network_transmit_bytes Total network bytes transmitted" >> prom_file
 			print "# TYPE runner_network_transmit_bytes gauge" >> prom_file
 		}
+		if (enable_disk_io == "true") {
+			print "# HELP runner_disk_read_bytes Total disk bytes read" >> prom_file
+			print "# TYPE runner_disk_read_bytes gauge" >> prom_file
+			print "# HELP runner_disk_written_bytes Total disk bytes written" >> prom_file
+			print "# TYPE runner_disk_written_bytes gauge" >> prom_file
+		}
 	}
 }
 
@@ -297,6 +304,8 @@ NR > 1 {
 	sw_tot = ($12 != "" ? $12 : 0)
 	rx_mb = ($13 != "" ? $13 : 0)
 	tx_mb = ($14 != "" ? $14 : 0)
+	dr_mb = ($15 != "" ? $15 : 0)
+	dw_mb = ($16 != "" ? $16 : 0)
 
 	if (count == 1) {
 		first_epoch = epoch
@@ -305,6 +314,8 @@ NR > 1 {
 		sw_init = sw_used
 		net_rx_init = rx_mb
 		net_tx_init = tx_mb
+		disk_r_init = dr_mb
+		disk_w_init = dw_mb
 		peak_mem = m_used
 		peak_cpu = tot
 		peak_swap = sw_used
@@ -326,6 +337,8 @@ NR > 1 {
 	last_sw_tot = sw_tot
 	net_rx_final = rx_mb
 	net_tx_final = tx_mb
+	disk_r_final = dr_mb
+	disk_w_final = dw_mb
 
 	d_rx = (count > 1 ? rx_mb - prev_rx : 0)
 	d_tx = (count > 1 ? tx_mb - prev_tx : 0)
@@ -337,6 +350,17 @@ NR > 1 {
 
 	prev_rx = rx_mb
 	prev_tx = tx_mb
+
+	d_dr = (count > 1 ? dr_mb - prev_dr : 0)
+	d_dw = (count > 1 ? dw_mb - prev_dw : 0)
+	if (d_dr < 0) d_dr = 0
+	if (d_dw < 0) d_dw = 0
+	d_dio = d_dr + d_dw
+	if (d_dio > peak_delta_dio) peak_delta_dio = d_dio
+	dio_hist[count] = d_dio
+
+	prev_dr = dr_mb
+	prev_dw = dw_mb
 
 	t_hist[count] = epoch
 	cpu_hist[count] = tot
@@ -366,6 +390,10 @@ NR > 1 {
 			printf "runner_network_receive_bytes{runner=\"%s\"} %d %s\n", rname, (rx_mb * 1048576), ts >> prom_file
 			printf "runner_network_transmit_bytes{runner=\"%s\"} %d %s\n", rname, (tx_mb * 1048576), ts >> prom_file
 		}
+		if (enable_disk_io == "true") {
+			printf "runner_disk_read_bytes{runner=\"%s\"} %d %s\n", rname, (dr_mb * 1048576), ts >> prom_file
+			printf "runner_disk_written_bytes{runner=\"%s\"} %d %s\n", rname, (dw_mb * 1048576), ts >> prom_file
+		}
 	}
 }
 
@@ -382,6 +410,9 @@ END {
 	tot_rx = (net_rx_final >= net_rx_init ? net_rx_final - net_rx_init : net_rx_final)
 	tot_tx = (net_tx_final >= net_tx_init ? net_tx_final - net_tx_init : net_tx_final)
 	net_spark = get_spark(net_hist, count, (peak_delta_net > 0 ? peak_delta_net : 100))
+	tot_dr = (disk_r_final >= disk_r_init ? disk_r_final - disk_r_init : disk_r_final)
+	tot_dw = (disk_w_final >= disk_w_init ? disk_w_final - disk_w_init : disk_w_final)
+	dio_spark = get_spark(dio_hist, count, (peak_delta_dio > 0 ? peak_delta_dio : 100))
 
 	if (runner_start != "" && runner_start > 0 && runner_start <= first_epoch) {
 		job_start = runner_start
@@ -398,7 +429,7 @@ END {
 		}
 	}
 
-	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\n",
+	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%s\n",
 		count, duration, avg_cpu, peak_cpu, max_steal,
 		m_init, peak_mem, m_final, tot_mem, peak_mem_pct,
 		d_consumed, oom_count,
@@ -407,14 +438,16 @@ END {
 		offset_start,
 		sw_init, peak_swap, sw_final, last_sw_tot,
 		get_spark(swap_hist, count, sw_max_limit),
-		tot_rx, tot_tx, net_spark
+		tot_rx, tot_tx, net_spark,
+		tot_dr, tot_dw, dio_spark
 }' "$SAMPLES_FILE")
 
 IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
 	MEM_INIT_MB MEM_PEAK_MB MEM_FINAL_MB MEM_TOTAL_MB MEM_PEAK_PCT \
 	DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE JOB_OFFSET_SEC \
 	SWAP_INIT_MB SWAP_PEAK_MB SWAP_FINAL_MB SWAP_TOTAL_MB SWAP_SPARKLINE \
-	NET_RX_MB NET_TX_MB NET_SPARKLINE <<EOF
+	NET_RX_MB NET_TX_MB NET_SPARKLINE \
+	DISK_READ_MB DISK_WRITE_MB DISK_IO_SPARKLINE <<EOF
 $STATS
 EOF
 
@@ -426,6 +459,9 @@ SWAP_SPARKLINE="${SWAP_SPARKLINE:-—}"
 NET_RX_MB="${NET_RX_MB:-0}"
 NET_TX_MB="${NET_TX_MB:-0}"
 NET_SPARKLINE="${NET_SPARKLINE:-—}"
+DISK_READ_MB="${DISK_READ_MB:-0}"
+DISK_WRITE_MB="${DISK_WRITE_MB:-0}"
+DISK_IO_SPARKLINE="${DISK_IO_SPARKLINE:-—}"
 
 # 3. Storage Baseline & Pre-installed Bloat Extraction
 STORAGE_BASELINE_FILE="${OUT_DIR}/storage_baseline.tsv"
@@ -541,12 +577,13 @@ fi
 
 # 6. Generate summary.json (Single Source of Truth)
 ESCAPED_OOM_DETAILS=$(printf '%s' "$OOM_DETAILS" | tr '\r\n\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"swap":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d},"network":{"rx_mb":%d,"tx_mb":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
+SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"swap":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d},"network":{"rx_mb":%d,"tx_mb":%d},"disk_io":{"read_mb":%d,"write_mb":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
 	"$DURATION_SEC" "$JOB_OFFSET_SEC" "$SAMPLE_COUNT" \
 	"$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
 	"$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
 	"$SWAP_INIT_MB" "$SWAP_PEAK_MB" "$SWAP_FINAL_MB" "$SWAP_TOTAL_MB" \
 	"$NET_RX_MB" "$NET_TX_MB" \
+	"$DISK_READ_MB" "$DISK_WRITE_MB" \
 	"$DISK_CONSUMED_MB" "$STORAGE_BASELINE_JSON" "$PHASES_JSON" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
 echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
@@ -569,6 +606,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		[ "$ENABLE_MEM" = "true" ] && echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
 		[ "$ENABLE_SWAP" = "true" ] && echo "| **Swap Usage** | ${SWAP_INIT_MB} MB | **${SWAP_PEAK_MB} MB** | ${SWAP_FINAL_MB} MB / ${SWAP_TOTAL_MB} MB | \`${SWAP_SPARKLINE}\` |"
 		[ "$ENABLE_NET" = "true" ] && echo "| **Network I/O** | — | RX: **${NET_RX_MB} MB** | TX: **${NET_TX_MB} MB** | \`${NET_SPARKLINE}\` |"
+		[ "$ENABLE_DISK_IO" = "true" ] && echo "| **Disk I/O** | — | Read: **${DISK_READ_MB} MB** | Write: **${DISK_WRITE_MB} MB** | \`${DISK_IO_SPARKLINE}\` |"
 		if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
 			if [ "$ENABLE_DISK" = "true" ]; then
 				echo "| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | — |"
@@ -614,6 +652,8 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
 		printf "peak_swap_mb=%s\n" "$SWAP_PEAK_MB"
 		printf "network_rx_mb=%s\n" "$NET_RX_MB"
 		printf "network_tx_mb=%s\n" "$NET_TX_MB"
+		printf "disk_read_mb=%s\n" "$DISK_READ_MB"
+		printf "disk_write_mb=%s\n" "$DISK_WRITE_MB"
 		printf "oom_detected=%s\n" "$OOM_DETECTED"
 		printf 'summary<<EOF_SUMMARY\n%s\nEOF_SUMMARY\n' "$SUMMARY_JSON"
 	} >>"$GITHUB_OUTPUT"

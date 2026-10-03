@@ -83,6 +83,10 @@ outputs:
     description: "Total network data received in megabytes during the job."
   network_tx_mb:
     description: "Total network data transmitted in megabytes during the job."
+  disk_read_mb:
+    description: "Total disk data read in megabytes during the job."
+  disk_write_mb:
+    description: "Total disk data written in megabytes during the job."
 
 runs:
   using: "node24"

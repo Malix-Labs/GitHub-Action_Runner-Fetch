@@ -13,7 +13,7 @@ trap 'exit 0' TERM INT QUIT HUP
 TARGET_OS="${RUNNER_OS:-Linux}"
 
 if [ ! -f "$SAMPLES_FILE" ]; then
-	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\n" >|"$SAMPLES_FILE"
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\tdisk_read_mb\tdisk_write_mb\n" >|"$SAMPLES_FILE"
 fi
 
 # Pre-resolve OOM kill source once before loop (Linux only)
@@ -52,8 +52,9 @@ ENABLE_MEM="${INPUT_MONITOR_MEMORY:-true}"
 ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
 ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 ENABLE_NET="${INPUT_MONITOR_NETWORK:-false}"
+ENABLE_DISK_IO="${INPUT_MONITOR_DISK_IO:-false}"
 
-if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ]; then
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ]; then
 	exit 0
 fi
 
@@ -72,6 +73,8 @@ while :; do
 	SWAP_TOTAL_MB=0
 	NET_RX_MB=0
 	NET_TX_MB=0
+	DISK_READ_MB=0
+	DISK_WRITE_MB=0
 
 	# 1. Target filesystem free disk space (actual workspace mount across all platforms)
 	if [ "$ENABLE_DISK" = "true" ]; then
@@ -184,11 +187,37 @@ EOF
 		NET_TX_MB="${NET_TX_MB:-0}"
 	fi
 
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+	# 5. Disk I/O metrics
+	if [ "$ENABLE_DISK_IO" = "true" ]; then
+		if [ -r /proc/diskstats ]; then
+			DISK_IO_BYTES=$(awk '{
+				if ($3 ~ /^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme[0-9]+n[0-9]+|mmcblk[0-9]+)$/) {
+					disk_r += $6; disk_w += $10; matched = 1
+				} else if ($3 !~ /^(loop|ram|zram)/) {
+					part_r += $6; part_w += $10
+				}
+			} END {
+				if (matched) { r = disk_r; w = disk_w }
+				else { r = part_r; w = part_w }
+				printf "%d\t%d\n", int(r * 512 / 1048576), int(w * 512 / 1048576)
+			}' /proc/diskstats 2>/dev/null || echo "0	0")
+			IFS='	' read -r DISK_READ_MB DISK_WRITE_MB <<EOF
+$DISK_IO_BYTES
+EOF
+		elif [ "$TARGET_OS" = "macOS" ]; then
+			DISK_READ_MB=$(iostat -d -I 2>/dev/null | awk 'NR==2 { for(i=3; i<=NF; i+=3) tot += $i } END { print int(tot) }' || echo 0)
+			DISK_WRITE_MB=0
+		fi
+		DISK_READ_MB="${DISK_READ_MB:-0}"
+		DISK_WRITE_MB="${DISK_WRITE_MB:-0}"
+	fi
+
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$EPOCH" "$CPU_USER" "$CPU_SYS" "$CPU_STEAL" "$CPU_IOWAIT" "$CPU_TOTAL" \
 		"$MEM_USED_MB" "$MEM_AVAIL_MB" "$DISK_FREE_MB" "$OOM_KILLS" \
 		"$SWAP_USED_MB" "$SWAP_TOTAL_MB" \
-		"$NET_RX_MB" "$NET_TX_MB" >>"$SAMPLES_FILE"
+		"$NET_RX_MB" "$NET_TX_MB" \
+		"$DISK_READ_MB" "$DISK_WRITE_MB" >>"$SAMPLES_FILE"
 
 	sleep "$SAMPLE_INTERVAL"
 done
