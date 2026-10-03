@@ -13,7 +13,7 @@ trap 'exit 0' TERM INT QUIT HUP
 TARGET_OS="${RUNNER_OS:-Linux}"
 
 if [ ! -f "$SAMPLES_FILE" ]; then
-	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\n" >|"$SAMPLES_FILE"
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\n" >|"$SAMPLES_FILE"
 fi
 
 # Pre-resolve OOM kill source once before loop (Linux only)
@@ -47,11 +47,12 @@ PREV_IDLE=0
 PREV_IOWAIT=0
 PREV_STEAL=0
 
-ENABLE_CPU="$INPUT_MONITOR_CPU"
-ENABLE_MEM="$INPUT_MONITOR_MEMORY"
-ENABLE_DISK="$INPUT_MONITOR_DISK"
+ENABLE_CPU="${INPUT_MONITOR_CPU:-true}"
+ENABLE_MEM="${INPUT_MONITOR_MEMORY:-true}"
+ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
+ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 
-if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ]; then
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ]; then
 	exit 0
 fi
 
@@ -66,27 +67,37 @@ while :; do
 	MEM_AVAIL_MB=0
 	DISK_FREE_MB=0
 	OOM_KILLS=0
+	SWAP_USED_MB=0
+	SWAP_TOTAL_MB=0
 
 	# 1. Target filesystem free disk space (actual workspace mount across all platforms)
 	if [ "$ENABLE_DISK" = "true" ]; then
 		DISK_FREE_MB=$(df -k "$TARGET_DISK_DIR" 2>/dev/null | awk 'NR==2 {print int($4/1024)}' || echo 0)
 	fi
 
-	# 2. Memory metrics: /proc/meminfo is shared between Linux and Windows (MSYS/Git Bash)
-	if [ "$ENABLE_MEM" = "true" ]; then
+	# 2. Memory and Swap metrics: /proc/meminfo is shared between Linux and Windows (MSYS/Git Bash)
+	if [ "$ENABLE_MEM" = "true" ] || [ "$ENABLE_SWAP" = "true" ]; then
 		if [ -r /proc/meminfo ]; then
 			MEM_TOTAL_KB=0
 			MEM_AVAIL_KB=0
+			SWAP_TOTAL_KB=0
+			SWAP_FREE_KB=0
 			while read -r key val _; do
 				case "$key" in
 				MemTotal:) MEM_TOTAL_KB=$val ;;
 				MemAvailable:) MEM_AVAIL_KB=$val ;;
 				MemFree:) [ "$MEM_AVAIL_KB" -eq 0 ] && MEM_AVAIL_KB=$val ;;
+				SwapTotal:) SWAP_TOTAL_KB=$val ;;
+				SwapFree:) SWAP_FREE_KB=$val ;;
 				esac
 			done </proc/meminfo
-			if [ "$MEM_TOTAL_KB" -gt 0 ]; then
+			if [ "$ENABLE_MEM" = "true" ] && [ "$MEM_TOTAL_KB" -gt 0 ]; then
 				MEM_USED_MB=$(((MEM_TOTAL_KB - MEM_AVAIL_KB) / 1024))
 				MEM_AVAIL_MB=$((MEM_AVAIL_KB / 1024))
+			fi
+			if [ "$ENABLE_SWAP" = "true" ] && [ "$SWAP_TOTAL_KB" -gt 0 ]; then
+				SWAP_USED_MB=$(((SWAP_TOTAL_KB - SWAP_FREE_KB) / 1024))
+				SWAP_TOTAL_MB=$((SWAP_TOTAL_KB / 1024))
 			fi
 		fi
 	fi
@@ -134,6 +145,13 @@ while :; do
 				MEM_USED_MB=$(((HW_MEMSIZE / 1048576) - MEM_AVAIL_MB))
 			fi
 		fi
+		if [ "$ENABLE_SWAP" = "true" ]; then
+			SWAP_OUT=$(sysctl -n vm.swapusage 2>/dev/null || echo "")
+			if [ -n "$SWAP_OUT" ]; then
+				SWAP_TOTAL_MB=$(echo "$SWAP_OUT" | awk -F'total = ' '{split($2, a, "M"); print int(a[1])}' 2>/dev/null || echo 0)
+				SWAP_USED_MB=$(echo "$SWAP_OUT" | awk -F'used = ' '{split($2, a, "M"); print int(a[1])}' 2>/dev/null || echo 0)
+			fi
+		fi
 		if [ "$ENABLE_CPU" = "true" ]; then
 			CPU_TOTAL=$(top -l 1 -n 0 -F -R 2>/dev/null | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
 		fi
@@ -146,9 +164,10 @@ while :; do
 		;;
 	esac
 
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$EPOCH" "$CPU_USER" "$CPU_SYS" "$CPU_STEAL" "$CPU_IOWAIT" "$CPU_TOTAL" \
-		"$MEM_USED_MB" "$MEM_AVAIL_MB" "$DISK_FREE_MB" "$OOM_KILLS" >>"$SAMPLES_FILE"
+		"$MEM_USED_MB" "$MEM_AVAIL_MB" "$DISK_FREE_MB" "$OOM_KILLS" \
+		"$SWAP_USED_MB" "$SWAP_TOTAL_MB" >>"$SAMPLES_FILE"
 
 	sleep "$SAMPLE_INTERVAL"
 done

@@ -23,11 +23,12 @@ fi
 # Allow a moment for monitor to flush last write
 sleep 1
 
-ENABLE_CPU="${INPUT_MONITOR_CPU}"
-ENABLE_MEM="${INPUT_MONITOR_MEMORY}"
-ENABLE_DISK="${INPUT_MONITOR_DISK}"
+ENABLE_CPU="${INPUT_MONITOR_CPU:-true}"
+ENABLE_MEM="${INPUT_MONITOR_MEMORY:-true}"
+ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
+ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 
-if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ]; then
+if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ]; then
 	exit 0
 fi
 
@@ -51,7 +52,7 @@ fi
 [ -n "$PROM_TARGET" ] && : >|"$PROM_TARGET"
 
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
-STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v runner_start="$RUNNER_START_EPOCH" '
+STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v runner_start="$RUNNER_START_EPOCH" '
 function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	if (n < 1) return "—"
 	pts = (n > 30 ? 30 : n)
@@ -271,6 +272,12 @@ BEGIN {
 			print "# HELP runner_disk_free_bytes Free disk space in bytes" >> prom_file
 			print "# TYPE runner_disk_free_bytes gauge" >> prom_file
 		}
+		if (enable_swap == "true") {
+			print "# HELP runner_swap_used_bytes Swap space used in bytes" >> prom_file
+			print "# TYPE runner_swap_used_bytes gauge" >> prom_file
+			print "# HELP runner_swap_total_bytes Total swap space in bytes" >> prom_file
+			print "# TYPE runner_swap_total_bytes gauge" >> prom_file
+		}
 	}
 }
 
@@ -279,13 +286,17 @@ NR > 1 {
 	epoch = $1
 	u = $2; s = $3; st = $4; io = $5; tot = $6
 	m_used = $7; m_avail = $8; d_free = $9; oom = $10
+	sw_used = ($11 != "" ? $11 : 0)
+	sw_tot = ($12 != "" ? $12 : 0)
 
 	if (count == 1) {
 		first_epoch = epoch
 		m_init = m_used
 		d_init = d_free
+		sw_init = sw_used
 		peak_mem = m_used
 		peak_cpu = tot
+		peak_swap = sw_used
 		max_steal = st
 	}
 
@@ -293,16 +304,20 @@ NR > 1 {
 	if (tot > peak_cpu) peak_cpu = tot
 	if (st > max_steal) max_steal = st
 	if (m_used > peak_mem) peak_mem = m_used
+	if (sw_used > peak_swap) peak_swap = sw_used
 	if (oom > 0) oom_count += oom
 
 	last_epoch = epoch
 	m_final = m_used
 	d_final = d_free
 	last_avail = m_avail
+	sw_final = sw_used
+	last_sw_tot = sw_tot
 
 	t_hist[count] = epoch
 	cpu_hist[count] = tot
 	mem_hist[count] = m_used
+	swap_hist[count] = sw_used
 
 	if (prom_file != "") {
 		ts = epoch "000"
@@ -319,6 +334,10 @@ NR > 1 {
 		if (enable_disk == "true") {
 			printf "runner_disk_free_bytes{runner=\"%s\",mount=\"/\"} %d %s\n", rname, (d_free * 1048576), ts >> prom_file
 		}
+		if (enable_swap == "true") {
+			printf "runner_swap_used_bytes{runner=\"%s\"} %d %s\n", rname, (sw_used * 1048576), ts >> prom_file
+			printf "runner_swap_total_bytes{runner=\"%s\"} %d %s\n", rname, (sw_tot * 1048576), ts >> prom_file
+		}
 	}
 }
 
@@ -331,6 +350,7 @@ END {
 	tot_mem = peak_mem + last_avail
 	if (tot_mem == 0) tot_mem = 1
 	peak_mem_pct = int((peak_mem * 100) / tot_mem)
+	sw_max_limit = (last_sw_tot > 0 ? last_sw_tot : (peak_swap > 0 ? peak_swap : 100))
 
 	if (runner_start != "" && runner_start > 0 && runner_start <= first_epoch) {
 		job_start = runner_start
@@ -347,20 +367,29 @@ END {
 		}
 	}
 
-	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\n",
+	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\n",
 		count, duration, avg_cpu, peak_cpu, max_steal,
 		m_init, peak_mem, m_final, tot_mem, peak_mem_pct,
 		d_consumed, oom_count,
 		get_spark(cpu_hist, count, 100),
 		get_spark(mem_hist, count, tot_mem),
-		offset_start
+		offset_start,
+		sw_init, peak_swap, sw_final, last_sw_tot,
+		get_spark(swap_hist, count, sw_max_limit)
 }' "$SAMPLES_FILE")
 
 IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
 	MEM_INIT_MB MEM_PEAK_MB MEM_FINAL_MB MEM_TOTAL_MB MEM_PEAK_PCT \
-	DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE JOB_OFFSET_SEC <<EOF
+	DISK_CONSUMED_MB OOM_COUNT CPU_SPARKLINE MEM_SPARKLINE JOB_OFFSET_SEC \
+	SWAP_INIT_MB SWAP_PEAK_MB SWAP_FINAL_MB SWAP_TOTAL_MB SWAP_SPARKLINE <<EOF
 $STATS
 EOF
+
+SWAP_INIT_MB="${SWAP_INIT_MB:-0}"
+SWAP_PEAK_MB="${SWAP_PEAK_MB:-0}"
+SWAP_FINAL_MB="${SWAP_FINAL_MB:-0}"
+SWAP_TOTAL_MB="${SWAP_TOTAL_MB:-0}"
+SWAP_SPARKLINE="${SWAP_SPARKLINE:-—}"
 
 # 3. Storage Baseline & Pre-installed Bloat Extraction
 STORAGE_BASELINE_FILE="${OUT_DIR}/storage_baseline.tsv"
@@ -476,10 +505,11 @@ fi
 
 # 6. Generate summary.json (Single Source of Truth)
 ESCAPED_OOM_DETAILS=$(printf '%s' "$OOM_DETAILS" | tr '\r\n\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
+SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_count":%d,"cpu":{"average_percent":%d,"peak_percent":%d,"max_steal_percent":%d},"memory":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d,"peak_percent":%d},"swap":{"initial_mb":%d,"peak_mb":%d,"final_mb":%d,"total_mb":%d},"disk":{"consumed_mb":%d},"storage_baseline":%s,"phases":%s,"oom_detected":%s,"oom_details":"%s"}' \
 	"$DURATION_SEC" "$JOB_OFFSET_SEC" "$SAMPLE_COUNT" \
 	"$CPU_AVG" "$CPU_PEAK" "$CPU_STEAL_MAX" \
 	"$MEM_INIT_MB" "$MEM_PEAK_MB" "$MEM_FINAL_MB" "$MEM_TOTAL_MB" "$MEM_PEAK_PCT" \
+	"$SWAP_INIT_MB" "$SWAP_PEAK_MB" "$SWAP_FINAL_MB" "$SWAP_TOTAL_MB" \
 	"$DISK_CONSUMED_MB" "$STORAGE_BASELINE_JSON" "$PHASES_JSON" "$OOM_DETECTED" "$ESCAPED_OOM_DETAILS")
 
 echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
@@ -500,6 +530,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		echo "| :--- | :--- | :--- | :--- | :--- |"
 		[ "$ENABLE_CPU" = "true" ] && echo "| **CPU Utilization** | — | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
 		[ "$ENABLE_MEM" = "true" ] && echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
+		[ "$ENABLE_SWAP" = "true" ] && echo "| **Swap Usage** | ${SWAP_INIT_MB} MB | **${SWAP_PEAK_MB} MB** | ${SWAP_FINAL_MB} MB / ${SWAP_TOTAL_MB} MB | \`${SWAP_SPARKLINE}\` |"
 		if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
 			if [ "$ENABLE_DISK" = "true" ]; then
 				echo "| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | — |"
@@ -536,12 +567,13 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 	} >>"$GITHUB_STEP_SUMMARY"
 fi
 
-# 6. Set Action Outputs
+# 8. Set Action Outputs
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
 	{
 		printf "peak_memory_mb=%s\n" "$MEM_PEAK_MB"
 		printf "avg_cpu_percent=%s\n" "$CPU_AVG"
 		printf "disk_consumed_mb=%s\n" "$DISK_CONSUMED_MB"
+		printf "peak_swap_mb=%s\n" "$SWAP_PEAK_MB"
 		printf "oom_detected=%s\n" "$OOM_DETECTED"
 		printf 'summary<<EOF_SUMMARY\n%s\nEOF_SUMMARY\n' "$SUMMARY_JSON"
 	} >>"$GITHUB_OUTPUT"

@@ -447,4 +447,45 @@ if (!summary.storage_baseline || summary.storage_baseline.preinstalled_bloat_per
 "
 echo "Test 14 PASSED."
 
+echo "=== Test 15: Swap monitoring telemetry, outputs, summary table & Prometheus ==="
+setup_test "test15"
+export INPUT_MONITOR_SWAP="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+{
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\n"
+	printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\t120\t2048\n"
+	printf "1789000002\t15\t15\t0\t0\t30\t2500\t5500\t50000\t0\t350\t2048\n"
+	printf "1789000004\t10\t10\t0\t0\t20\t2200\t5800\t50000\t0\t210\t2048\n"
+} >|"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+
+if ! grep -q "Swap Usage" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Swap Usage row missing in step summary" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "peak_swap_mb=350" "$GITHUB_OUTPUT"; then
+	echo "Error: Expected peak_swap_mb=350 not found in GITHUB_OUTPUT" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+if ! grep -q "runner_swap_used_bytes" "$RUN_DIR/runner-fetch/metrics.prom"; then
+	echo "Error: Expected runner_swap_used_bytes missing in Prometheus metrics" >&2
+	cat "$RUN_DIR/runner-fetch/metrics.prom" >&2
+	exit 1
+fi
+
+node -e "
+const fs = require('fs');
+const summary = JSON.parse(fs.readFileSync('$RUN_DIR/runner-fetch/summary.json', 'utf8'));
+if (!summary.swap || summary.swap.peak_mb !== 350 || summary.swap.initial_mb !== 120 || summary.swap.final_mb !== 210 || summary.swap.total_mb !== 2048) {
+  console.error('Error: Swap metrics missing or incorrect in summary.json:', summary.swap);
+  process.exit(1);
+}
+"
+echo "Test 15 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

@@ -77,6 +77,8 @@ outputs:
     description: "Average CPU utilization percentage during the phase."
   phase_disk_consumed_mb:
     description: "Net disk space consumed in megabytes during the phase."
+  peak_swap_mb:
+    description: "Peak swap usage in megabytes during the job."
 
 runs:
   using: "node24"
