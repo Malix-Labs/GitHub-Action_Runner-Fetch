@@ -42,3 +42,9 @@ jobs:
       - uses: actions/checkout@v7
       - id: runner-fetch
         uses: ./
+        with:
+          monitor-disk: true
+          monitor-swap: true
+          monitor-network: true
+          monitor-disk-io: true
+          monitor-gpu: true
