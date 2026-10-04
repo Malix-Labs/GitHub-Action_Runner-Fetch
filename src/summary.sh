@@ -7,6 +7,7 @@ SAMPLES_FILE="${OUT_DIR}/samples.tsv"
 SUMMARY_FILE="${OUT_DIR}/summary.json"
 PROM_FILE="${OUT_DIR}/metrics.prom"
 CHART_FILE="${OUT_DIR}/chart.mermaid"
+IO_CHART_FILE="${OUT_DIR}/io_chart.mermaid"
 GANTT_FILE="${OUT_DIR}/gantt.mermaid"
 
 # 1. Stop background monitor daemon if running
@@ -53,11 +54,12 @@ fi
 
 # Truncate output files safely under noclobber (set -C)
 : >|"$CHART_FILE"
+: >|"$IO_CHART_FILE"
 : >|"$GANTT_FILE"
 [ -n "$PROM_TARGET" ] && : >|"$PROM_TARGET"
 
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
-STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v enable_net="$ENABLE_NET" -v enable_disk_io="$ENABLE_DISK_IO" -v enable_gpu="$ENABLE_GPU" -v runner_start="$RUNNER_START_EPOCH" '
+STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v io_chart_file="$IO_CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v enable_net="$ENABLE_NET" -v enable_disk_io="$ENABLE_DISK_IO" -v enable_gpu="$ENABLE_GPU" -v runner_start="$RUNNER_START_EPOCH" '
 function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 	if (n < 1) return "—"
 	pts = (n > 30 ? 30 : n)
@@ -78,38 +80,55 @@ function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
 # Docs: https://mermaid.js.org/config/setup/mermaid/interfaces/MermaidConfig.html#maxtextsize
 # Code Permalink: https://github.com/mermaid-js/mermaid/blob/386bbcaad2ce3ed0cbbba88fab75fb31c5b251e6/packages/mermaid/src/schemas/config.schema.yaml#L87-L90
 # Official xyChart documentation: https://mermaid.ai/open-source/syntax/xyChart.html
-function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, total_l) {
+function get_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_c, max_m, max_g, max_v, max_sw, c_val, m_val, g_val, v_val, sw_val, total_l) {
 	total_l = 0
 	step_sz = (count - 1) / (candidate_pts - 1)
 	for (p = 0; p < candidate_pts; p++) {
 		if (candidate_pts == count) {
 			c_val = int(cpu_hist[p + 1])
 			m_val = int(mem_hist[p + 1] * 100 / tot_mem)
+			g_val = int(gpu_hist[p + 1])
+			v_val = (last_vram_tot > 0 ? int(vram_hist[p + 1] * 100 / last_vram_tot) : 0)
+			sw_val = (last_sw_tot > 0 ? int(swap_hist[p + 1] * 100 / last_sw_tot) : 0)
 		} else {
 			s_idx = int(1 + p * step_sz)
 			e_idx = int(1 + (p + 1) * step_sz)
 			if (e_idx > count) e_idx = count
-			max_c = 0
-			max_m = 0
+			max_c = 0; max_m = 0; max_g = 0; max_v = 0; max_sw = 0
 			for (j = s_idx; j <= e_idx; j++) {
 				if (cpu_hist[j] > max_c) max_c = cpu_hist[j]
 				if (mem_hist[j] > max_m) max_m = mem_hist[j]
+				if (gpu_hist[j] > max_g) max_g = gpu_hist[j]
+				if (vram_hist[j] > max_v) max_v = vram_hist[j]
+				if (swap_hist[j] > max_sw) max_sw = swap_hist[j]
 			}
 			c_val = int(max_c)
 			m_val = int(max_m * 100 / tot_mem)
+			g_val = int(max_g)
+			v_val = (last_vram_tot > 0 ? int(max_v * 100 / last_vram_tot) : 0)
+			sw_val = (last_sw_tot > 0 ? int(max_sw * 100 / last_sw_tot) : 0)
 		}
-		if (c_val < 0) c_val = 0
-		if (c_val > 100) c_val = 100
-		if (m_val < 0) m_val = 0
-		if (m_val > 100) m_val = 100
+		if (c_val < 0) c_val = 0; if (c_val > 100) c_val = 100
+		if (m_val < 0) m_val = 0; if (m_val > 100) m_val = 100
+		if (g_val < 0) g_val = 0; if (g_val > 100) g_val = 100
+		if (v_val < 0) v_val = 0; if (v_val > 100) v_val = 100
+		if (sw_val < 0) sw_val = 0; if (sw_val > 100) sw_val = 100
+
 		if (enable_cpu == "true") total_l += length(c_val) + (p > 0 ? 1 : 0)
 		if (enable_mem == "true") total_l += length(m_val) + (p > 0 ? 1 : 0)
+		if (has_gpu) total_l += length(g_val) + (p > 0 ? 1 : 0)
+		if (has_vram) total_l += length(v_val) + (p > 0 ? 1 : 0)
+		if (has_swap) total_l += length(sw_val) + (p > 0 ? 1 : 0)
 	}
 	return total_l
 }
 
-function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_min, x_max, target_limit, lines_overhead, static_overhead, low, high, mid, pts, p, s_idx, e_idx, j, max_c, max_m, c_val, m_val, m_c, m_m, w, h, reserved, cfg, res, chart_body) {
-	if (enable_cpu != "true" && enable_mem != "true") {
+function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_min, x_max, target_limit, lines_overhead, static_overhead, low, high, mid, p, s_idx, e_idx, j, max_c, max_m, max_g, max_v, max_sw, c_val, m_val, g_val, v_val, sw_val, m_c, m_m, m_g, m_v, m_sw, w, cfg, res, chart_body) {
+	has_gpu = (enable_gpu == "true" && (peak_gpu > 0 || last_vram_tot > 0))
+	has_vram = (enable_gpu == "true" && last_vram_tot > 0)
+	has_swap = (enable_swap == "true" && peak_swap > 0 && last_sw_tot > 0)
+
+	if (enable_cpu != "true" && enable_mem != "true" && !has_gpu && !has_swap) {
 		return ""
 	}
 
@@ -156,6 +175,9 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 			"    y-axis \"Percentage (%)\" 0 --> 100\n"
 		if (enable_cpu == "true") res = res "    line \"CPU\" [" int(cpu_hist[1]) "," int(cpu_hist[1]) "]\n"
 		if (enable_mem == "true") res = res "    line \"RAM\" [" int(mem_hist[1] * 100 / tot_mem) "," int(mem_hist[1] * 100 / tot_mem) "]\n"
+		if (has_gpu) res = res "    line \"GPU\" [" int(gpu_hist[1]) "," int(gpu_hist[1]) "]\n"
+		if (has_vram) res = res "    line \"VRAM\" [" (last_vram_tot > 0 ? int(vram_hist[1] * 100 / last_vram_tot) : 0) "," (last_vram_tot > 0 ? int(vram_hist[1] * 100 / last_vram_tot) : 0) "]\n"
+		if (has_swap) res = res "    line \"Swap\" [" (last_sw_tot > 0 ? int(swap_hist[1] * 100 / last_sw_tot) : 0) "," (last_sw_tot > 0 ? int(swap_hist[1] * 100 / last_sw_tot) : 0) "]\n"
 		res = res "```\n"
 		return res
 	}
@@ -167,6 +189,9 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 	lines_overhead = ""
 	if (enable_cpu == "true") lines_overhead = lines_overhead "    line \"CPU\" []\n"
 	if (enable_mem == "true") lines_overhead = lines_overhead "    line \"RAM\" []\n"
+	if (has_gpu) lines_overhead = lines_overhead "    line \"GPU\" []\n"
+	if (has_vram) lines_overhead = lines_overhead "    line \"VRAM\" []\n"
+	if (has_swap) lines_overhead = lines_overhead "    line \"Swap\" []\n"
 	static_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" " x_min " --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
 
 	if (static_overhead + length(700 + count) + get_points_len(count) <= target_limit) {
@@ -189,7 +214,6 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 	}
 
 	# Dynamically scale canvas width smoothly with point density (enforcing >= 1px minimum gap per sample)
-	# (wide-chart legend cropping fixed upstream by https://github.com/mermaid-js/mermaid/pull/8284)
 	w = 700 + pts
 	last_chart_w = w
 
@@ -197,43 +221,65 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 
 	m_c = "line \"CPU\" ["
 	m_m = "line \"RAM\" ["
+	m_g = "line \"GPU\" ["
+	m_v = "line \"VRAM\" ["
+	m_sw = "line \"Swap\" ["
 
 	for (p = 0; p < pts; p++) {
 		if (pts == count) {
 			# 1:1 exact plotting without downsampling
 			c_val = int(cpu_hist[p + 1])
 			m_val = int(mem_hist[p + 1] * 100 / tot_mem)
+			g_val = int(gpu_hist[p + 1])
+			v_val = (last_vram_tot > 0 ? int(vram_hist[p + 1] * 100 / last_vram_tot) : 0)
+			sw_val = (last_sw_tot > 0 ? int(swap_hist[p + 1] * 100 / last_sw_tot) : 0)
 		} else {
 			# Peak-preserving bucket aggregation
 			s_idx = int(1 + p * (count - 1) / (pts - 1))
 			e_idx = int(1 + (p + 1) * (count - 1) / (pts - 1))
 			if (e_idx > count) e_idx = count
-			max_c = 0
-			max_m = 0
+			max_c = 0; max_m = 0; max_g = 0; max_v = 0; max_sw = 0
 			for (j = s_idx; j <= e_idx; j++) {
 				if (cpu_hist[j] > max_c) max_c = cpu_hist[j]
 				if (mem_hist[j] > max_m) max_m = mem_hist[j]
+				if (gpu_hist[j] > max_g) max_g = gpu_hist[j]
+				if (vram_hist[j] > max_v) max_v = vram_hist[j]
+				if (swap_hist[j] > max_sw) max_sw = swap_hist[j]
 			}
 			c_val = int(max_c)
 			m_val = int(max_m * 100 / tot_mem)
+			g_val = int(max_g)
+			v_val = (last_vram_tot > 0 ? int(max_v * 100 / last_vram_tot) : 0)
+			sw_val = (last_sw_tot > 0 ? int(max_sw * 100 / last_sw_tot) : 0)
 		}
 
-		if (c_val < 0) c_val = 0
-		if (c_val > 100) c_val = 100
-		if (m_val < 0) m_val = 0
-		if (m_val > 100) m_val = 100
+		if (c_val < 0) c_val = 0; if (c_val > 100) c_val = 100
+		if (m_val < 0) m_val = 0; if (m_val > 100) m_val = 100
+		if (g_val < 0) g_val = 0; if (g_val > 100) g_val = 100
+		if (v_val < 0) v_val = 0; if (v_val > 100) v_val = 100
+		if (sw_val < 0) sw_val = 0; if (sw_val > 100) sw_val = 100
 
 		if (enable_cpu == "true") {
-			if (p == 0) m_c = m_c c_val
-			else m_c = m_c "," c_val
+			if (p == 0) m_c = m_c c_val; else m_c = m_c "," c_val
 		}
 		if (enable_mem == "true") {
-			if (p == 0) m_m = m_m m_val
-			else m_m = m_m "," m_val
+			if (p == 0) m_m = m_m m_val; else m_m = m_m "," m_val
+		}
+		if (has_gpu) {
+			if (p == 0) m_g = m_g g_val; else m_g = m_g "," g_val
+		}
+		if (has_vram) {
+			if (p == 0) m_v = m_v v_val; else m_v = m_v "," v_val
+		}
+		if (has_swap) {
+			if (p == 0) m_sw = m_sw sw_val; else m_sw = m_sw "," sw_val
 		}
 	}
 	m_c = m_c "]"
 	m_m = m_m "]"
+	m_g = m_g "]"
+	m_v = m_v "]"
+	m_sw = m_sw "]"
 
 	chart_body = "```mermaid\n" cfg \
 		"xychart\n" \
@@ -242,6 +288,231 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 		"    y-axis \"Percentage (%)\" 0 --> 100\n"
 	if (enable_cpu == "true") chart_body = chart_body "    " m_c "\n"
 	if (enable_mem == "true") chart_body = chart_body "    " m_m "\n"
+	if (has_gpu) chart_body = chart_body "    " m_g "\n"
+	if (has_vram) chart_body = chart_body "    " m_v "\n"
+	if (has_swap) chart_body = chart_body "    " m_sw "\n"
+	chart_body = chart_body "```\n"
+
+	return chart_body
+}
+
+function get_io_points_len(candidate_pts,    step_sz, p, s_idx, e_idx, j, max_dr, max_dw, max_rx, max_tx, dr_val, dw_val, rx_val, tx_val, total_l) {
+	total_l = 0
+	step_sz = (count - 1) / (candidate_pts - 1)
+	for (p = 0; p < candidate_pts; p++) {
+		if (candidate_pts == count) {
+			dr_val = int(dr_hist[p + 1])
+			dw_val = int(dw_hist[p + 1])
+			rx_val = int(rx_hist[p + 1])
+			tx_val = int(tx_hist[p + 1])
+		} else {
+			s_idx = int(1 + p * step_sz)
+			e_idx = int(1 + (p + 1) * step_sz)
+			if (e_idx > count) e_idx = count
+			max_dr = 0; max_dw = 0; max_rx = 0; max_tx = 0
+			for (j = s_idx; j <= e_idx; j++) {
+				if (dr_hist[j] > max_dr) max_dr = dr_hist[j]
+				if (dw_hist[j] > max_dw) max_dw = dw_hist[j]
+				if (rx_hist[j] > max_rx) max_rx = rx_hist[j]
+				if (tx_hist[j] > max_tx) max_tx = tx_hist[j]
+			}
+			dr_val = int(max_dr)
+			dw_val = int(max_dw)
+			rx_val = int(max_rx)
+			tx_val = int(max_tx)
+		}
+		if (dr_val < 0) dr_val = 0
+		if (dw_val < 0) dw_val = 0
+		if (rx_val < 0) rx_val = 0
+		if (tx_val < 0) tx_val = 0
+
+		if (enable_disk_io == "true") {
+			total_l += length(dr_val) + length(dw_val) + (p > 0 ? 2 : 0)
+		}
+		if (enable_net == "true") {
+			total_l += length(rx_val) + length(tx_val) + (p > 0 ? 2 : 0)
+		}
+	}
+	return total_l
+}
+
+function build_io_mermaid(    job_start, offset_start, offset_end, x_title, x_min, x_max, cfg, p, s_idx, e_idx, j, max_dr, max_dw, max_rx, max_tx, dr_val, dw_val, rx_val, tx_val, peak_val, y_max, m_dr, m_dw, m_rx, m_tx, chart_body, res, pts_io, target_limit, lines_overhead, static_overhead, low, high, mid, w) {
+	if (enable_net != "true" && enable_disk_io != "true") {
+		return ""
+	}
+
+	if (runner_start != "" && runner_start > 0 && runner_start <= first_epoch) {
+		job_start = runner_start
+	} else {
+		job_start = first_epoch
+	}
+	offset_start = first_epoch - job_start
+	if (offset_start <= 2) offset_start = 0
+	offset_end = offset_start + (last_epoch > first_epoch ? (last_epoch - first_epoch) : 1)
+
+	x_title = "Elapsed Time (s)"
+	x_min = offset_start
+	x_max = offset_end
+	if (offset_end >= 86400) {
+		x_title = "Elapsed Time (days)"
+		x_min = sprintf("%.2f", offset_start / 86400)
+		x_max = sprintf("%.2f", offset_end / 86400)
+		if (x_min ~ /\.00$/) sub(/\.00$/, "", x_min); else if (x_min ~ /0$/) sub(/0$/, "", x_min)
+		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max); else if (x_max ~ /0$/) sub(/0$/, "", x_max)
+	} else if (offset_end >= 3600) {
+		x_title = "Elapsed Time (hours)"
+		x_min = sprintf("%.2f", offset_start / 3600)
+		x_max = sprintf("%.2f", offset_end / 3600)
+		if (x_min ~ /\.00$/) sub(/\.00$/, "", x_min); else if (x_min ~ /0$/) sub(/0$/, "", x_min)
+		if (x_max ~ /\.00$/) sub(/\.00$/, "", x_max); else if (x_max ~ /0$/) sub(/0$/, "", x_max)
+	} else if (offset_end >= 120) {
+		x_title = "Elapsed Time (minutes)"
+		x_min = sprintf("%.1f", offset_start / 60)
+		x_max = sprintf("%.1f", offset_end / 60)
+		if (x_min ~ /\.0$/) sub(/\.0$/, "", x_min)
+		if (x_max ~ /\.0$/) sub(/\.0$/, "", x_max)
+	}
+	if (offset_start == 0) x_min = "0"
+
+	if (count < 2) {
+		peak_val = 0
+		if (enable_disk_io == "true") {
+			if (dr_hist[1] > peak_val) peak_val = dr_hist[1]
+			if (dw_hist[1] > peak_val) peak_val = dw_hist[1]
+		}
+		if (enable_net == "true") {
+			if (rx_hist[1] > peak_val) peak_val = rx_hist[1]
+			if (tx_hist[1] > peak_val) peak_val = tx_hist[1]
+		}
+		y_max = (peak_val > 0 ? int(peak_val * 1.1) + 1 : 10)
+		res = "```mermaid\n" \
+			"xychart\n" \
+			"    title \"I/O Throughput Timeline\"\n" \
+			"    x-axis \"" x_title "\" " x_min " --> " x_max "\n" \
+			"    y-axis \"Throughput (MB)\" 0 --> " y_max "\n"
+		if (enable_disk_io == "true") {
+			res = res "    line \"Disk Read\" [" int(dr_hist[1]) "," int(dr_hist[1]) "]\n"
+			res = res "    line \"Disk Write\" [" int(dw_hist[1]) "," int(dw_hist[1]) "]\n"
+		}
+		if (enable_net == "true") {
+			res = res "    line \"Net RX\" [" int(rx_hist[1]) "," int(rx_hist[1]) "]\n"
+			res = res "    line \"Net TX\" [" int(tx_hist[1]) "," int(tx_hist[1]) "]\n"
+		}
+		res = res "```\n"
+		return res
+	}
+
+	target_limit = 50000
+	lines_overhead = ""
+	if (enable_disk_io == "true") lines_overhead = lines_overhead "    line \"Disk Read\" []\n    line \"Disk Write\" []\n"
+	if (enable_net == "true") lines_overhead = lines_overhead "    line \"Net RX\" []\n    line \"Net TX\" []\n"
+	static_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":}}}%%\nxychart\n    title \"I/O Throughput Timeline\"\n    x-axis \"" x_title "\" " x_min " --> " x_max "\n    y-axis \"Throughput (MB)\" 0 --> 999999\n" lines_overhead "```\n")
+
+	if (pts > 0 && static_overhead + length(700 + pts) + get_io_points_len(pts) <= target_limit) {
+		pts_io = pts
+	} else if (static_overhead + length(700 + count) + get_io_points_len(count) <= target_limit) {
+		pts_io = count
+	} else {
+		low = 2
+		high = (pts > 0 ? pts : count)
+		pts_io = 2
+		while (low <= high) {
+			mid = int((low + high) / 2)
+			if (static_overhead + length(700 + mid) + get_io_points_len(mid) <= target_limit) {
+				pts_io = mid
+				low = mid + 1
+			} else {
+				high = mid - 1
+			}
+		}
+	}
+
+	if (last_chart_w > 0) w = last_chart_w
+	else {
+		w = 700 + pts_io
+		last_chart_w = w
+	}
+
+	cfg = "%%{init:{\"xyChart\":{\"width\":" w "}}}%%\n"
+
+	m_dr = "line \"Disk Read\" ["
+	m_dw = "line \"Disk Write\" ["
+	m_rx = "line \"Net RX\" ["
+	m_tx = "line \"Net TX\" ["
+
+	peak_val = 0
+	for (p = 0; p < pts_io; p++) {
+		if (pts_io == count) {
+			dr_val = int(dr_hist[p + 1])
+			dw_val = int(dw_hist[p + 1])
+			rx_val = int(rx_hist[p + 1])
+			tx_val = int(tx_hist[p + 1])
+		} else {
+			s_idx = int(1 + p * (count - 1) / (pts_io - 1))
+			e_idx = int(1 + (p + 1) * (count - 1) / (pts_io - 1))
+			if (e_idx > count) e_idx = count
+			max_dr = 0; max_dw = 0; max_rx = 0; max_tx = 0
+			for (j = s_idx; j <= e_idx; j++) {
+				if (dr_hist[j] > max_dr) max_dr = dr_hist[j]
+				if (dw_hist[j] > max_dw) max_dw = dw_hist[j]
+				if (rx_hist[j] > max_rx) max_rx = rx_hist[j]
+				if (tx_hist[j] > max_tx) max_tx = tx_hist[j]
+			}
+			dr_val = int(max_dr)
+			dw_val = int(max_dw)
+			rx_val = int(max_rx)
+			tx_val = int(max_tx)
+		}
+
+		if (dr_val < 0) dr_val = 0
+		if (dw_val < 0) dw_val = 0
+		if (rx_val < 0) rx_val = 0
+		if (tx_val < 0) tx_val = 0
+
+		if (enable_disk_io == "true") {
+			if (dr_val > peak_val) peak_val = dr_val
+			if (dw_val > peak_val) peak_val = dw_val
+			if (p == 0) {
+				m_dr = m_dr dr_val
+				m_dw = m_dw dw_val
+			} else {
+				m_dr = m_dr "," dr_val
+				m_dw = m_dw "," dw_val
+			}
+		}
+		if (enable_net == "true") {
+			if (rx_val > peak_val) peak_val = rx_val
+			if (tx_val > peak_val) peak_val = tx_val
+			if (p == 0) {
+				m_rx = m_rx rx_val
+				m_tx = m_tx tx_val
+			} else {
+				m_rx = m_rx "," rx_val
+				m_tx = m_tx "," tx_val
+			}
+		}
+	}
+
+	m_dr = m_dr "]"
+	m_dw = m_dw "]"
+	m_rx = m_rx "]"
+	m_tx = m_tx "]"
+
+	y_max = (peak_val > 0 ? int(peak_val * 1.1) + 1 : 10)
+
+	chart_body = "```mermaid\n" cfg \
+		"xychart\n" \
+		"    title \"I/O Throughput Timeline\"\n" \
+		"    x-axis \"" x_title "\" " x_min " --> " x_max "\n" \
+		"    y-axis \"Throughput (MB)\" 0 --> " y_max "\n"
+	if (enable_disk_io == "true") {
+		chart_body = chart_body "    " m_dr "\n"
+		chart_body = chart_body "    " m_dw "\n"
+	}
+	if (enable_net == "true") {
+		chart_body = chart_body "    " m_rx "\n"
+		chart_body = chart_body "    " m_tx "\n"
+	}
 	chart_body = chart_body "```\n"
 
 	return chart_body
@@ -369,6 +640,8 @@ NR > 1 {
 	d_net = d_rx + d_tx
 	if (d_net > peak_delta_net) peak_delta_net = d_net
 	net_hist[count] = d_net
+	rx_hist[count] = d_rx
+	tx_hist[count] = d_tx
 
 	prev_rx = rx_mb
 	prev_tx = tx_mb
@@ -380,6 +653,8 @@ NR > 1 {
 	d_dio = d_dr + d_dw
 	if (d_dio > peak_delta_dio) peak_delta_dio = d_dio
 	dio_hist[count] = d_dio
+	dr_hist[count] = d_dr
+	dw_hist[count] = d_dw
 
 	prev_dr = dr_mb
 	prev_dw = dw_mb
@@ -459,6 +734,12 @@ END {
 		chart_content = build_mermaid()
 		if (chart_content != "") {
 			printf "%s", chart_content > chart_file
+		}
+	}
+	if (io_chart_file != "") {
+		io_chart_content = build_io_mermaid()
+		if (io_chart_content != "") {
+			printf "%s", io_chart_content > io_chart_file
 		}
 	}
 
@@ -794,13 +1075,14 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 			echo ""
 			cat "$CHART_FILE"
 			echo ""
-			if [ -s "$GANTT_FILE" ]; then
-				cat "$GANTT_FILE"
-				echo ""
-			fi
-		elif [ -s "$GANTT_FILE" ]; then
-			echo "### Resource Utilization Timeline"
+		fi
+		if [ -s "$IO_CHART_FILE" ]; then
+			echo "### I/O Throughput Timeline"
 			echo ""
+			cat "$IO_CHART_FILE"
+			echo ""
+		fi
+		if [ -s "$GANTT_FILE" ]; then
 			cat "$GANTT_FILE"
 			echo ""
 		fi

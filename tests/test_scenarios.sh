@@ -752,4 +752,66 @@ if (!Array.isArray(summary.phases) || summary.phases.length !== 1 || summary.pha
 "
 echo "Test 19 PASSED."
 
+echo "=== Test 20: Dedicated I/O throughput timeline chart & canvas synchronization ==="
+setup_test "test20"
+export INPUT_MONITOR_DISK_IO="true"
+export INPUT_MONITOR_NETWORK="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+{
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\tdisk_read_mb\tdisk_write_mb\n"
+	printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\t0\t0\t100\t50\t500\t200\n"
+	printf "1789000002\t15\t15\t0\t0\t30\t2500\t5500\t50000\t0\t0\t0\t250\t80\t800\t450\n"
+	printf "1789000004\t10\t10\t0\t0\t20\t2200\t5800\t50000\t0\t0\t0\t320\t110\t950\t600\n"
+} >|"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+
+IO_CHART="$RUN_DIR/runner-fetch/io_chart.mermaid"
+PRIMARY_CHART="$RUN_DIR/runner-fetch/chart.mermaid"
+
+if [ ! -s "$IO_CHART" ]; then
+	echo "Error: io_chart.mermaid was not generated in Test 20" >&2
+	exit 1
+fi
+
+if ! grep -q 'title "I/O Throughput Timeline"' "$IO_CHART"; then
+	echo "Error: Title 'I/O Throughput Timeline' missing in io_chart.mermaid" >&2
+	cat "$IO_CHART" >&2
+	exit 1
+fi
+
+if ! grep -q 'y-axis "Throughput (MB)"' "$IO_CHART"; then
+	echo "Error: Y-axis 'Throughput (MB)' missing in io_chart.mermaid" >&2
+	cat "$IO_CHART" >&2
+	exit 1
+fi
+
+if ! grep -q 'line "Disk Read"' "$IO_CHART" || ! grep -q 'line "Disk Write"' "$IO_CHART"; then
+	echo "Error: Disk I/O series missing in io_chart.mermaid" >&2
+	cat "$IO_CHART" >&2
+	exit 1
+fi
+
+if ! grep -q 'line "Net RX"' "$IO_CHART" || ! grep -q 'line "Net TX"' "$IO_CHART"; then
+	echo "Error: Network I/O series missing in io_chart.mermaid" >&2
+	cat "$IO_CHART" >&2
+	exit 1
+fi
+
+# Verify canvas width synchronization between charts
+W_PRIMARY=$(grep -o '"width":[0-9]*' "$PRIMARY_CHART" | head -n 1)
+W_IO=$(grep -o '"width":[0-9]*' "$IO_CHART" | head -n 1)
+if [ -n "$W_PRIMARY" ] && [ "$W_PRIMARY" != "$W_IO" ]; then
+	echo "Error: Canvas width mismatch between primary chart ($W_PRIMARY) and IO chart ($W_IO)" >&2
+	exit 1
+fi
+
+if ! grep -q "### I/O Throughput Timeline" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: '### I/O Throughput Timeline' missing in GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+echo "Test 20 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="
