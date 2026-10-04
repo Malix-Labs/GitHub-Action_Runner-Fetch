@@ -170,7 +170,13 @@ while :; do
 		if [ "$ENABLE_CPU" = "true" ] || [ "$ENABLE_DISK_IO" = "true" ]; then
 			TOP_OUT=$(top -l 1 -n 0 -F -R 2>/dev/null || echo "")
 			if [ "$ENABLE_CPU" = "true" ]; then
-				CPU_TOTAL=$(echo "$TOP_OUT" | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
+				CPU_SPLIT=$(echo "$TOP_OUT" | awk -F'[:,%]' '/CPU usage:/ { printf "%d\t%d\t%d\n", int($2), int($4), int($2 + $4) }' || echo "0	0	0")
+				IFS='	' read -r CPU_USER CPU_SYS CPU_TOTAL <<EOF
+$CPU_SPLIT
+EOF
+				CPU_USER="${CPU_USER:-0}"
+				CPU_SYS="${CPU_SYS:-0}"
+				CPU_TOTAL="${CPU_TOTAL:-0}"
 			fi
 		fi
 		;;

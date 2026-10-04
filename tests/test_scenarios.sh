@@ -938,6 +938,12 @@ if [ "$PARSED_DISK_M" != "250	50" ]; then
 	exit 1
 fi
 
+PARSED_CPU=$(echo "$MOCK_TOP" | awk -F'[:,%]' '/CPU usage:/ { printf "%d\t%d\t%d\n", int($2), int($4), int($2 + $4) }')
+if [ "$PARSED_CPU" != "12	7	20" ]; then
+	printf "Error: macOS top CPU user/sys awk parser returned '%s', expected '12\\t7\\t20'\\n" "$PARSED_CPU" >&2
+	exit 1
+fi
+
 echo "Test 22 PASSED."
 
 echo "=== Test 23: Cross-platform OOM diagnostics (macOS Jetsam & Windows Event 2004) ==="
