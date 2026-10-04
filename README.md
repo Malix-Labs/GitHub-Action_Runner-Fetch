@@ -29,7 +29,7 @@ GitHub Action to inspect and continuously monitor GitHub Actions runner VMs.
 steps:
   - name: Fetch & Monitor Runner
     id: fetch
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v1.0.0
     with:
       monitor-cpu: true
       monitor-memory: true
@@ -59,7 +59,7 @@ You can mark execution phases using `phase-start` and `phase-end`, or pin instan
 steps:
   # Initial step initializes monitoring and starts the Setup phase
   - name: Init Telemetry & Start Setup
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v1.0.0
     with:
       phase-start: "Setup"
 
@@ -69,14 +69,14 @@ steps:
   # Mark an instantaneous milestone
   - name: Milestone Cache Restored
     id: milestone-cache
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v1.0.0
     with:
       milestone: "Cache Restored"
 
   # Transition from Setup to Build phase
   - name: End Setup & Start Build
     id: phase-build
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v1.0.0
     with:
       phase-end: "Setup"
       phase-start: "Build"
@@ -86,7 +86,7 @@ steps:
 
   # Complete Build phase
   - name: End Build
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v1.0.0
     with:
       phase-end: "Build"
 ```
