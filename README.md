@@ -17,6 +17,8 @@ GitHub Action to inspect and continuously monitor GitHub Actions runner VMs.
 - **Automated Runner Start-Time Alignment**: Auto-detects runner initialization time from the environment, automatically offsetting the Mermaid timeline X-axis (e.g. `45s --> 120s`) when the action is called late in a workflow run.
 - **Storage Baseline & Pre-installed Bloat Reporting**: Automatically captures initial disk partition capacity, pre-installed software bloat, and net consumption in `$GITHUB_STEP_SUMMARY`.
 - **Phase Breakdown Table**: Automatically renders a dedicated comparison table contrasting each phase's and milestone's resource profile against the total job.
+- **Dedicated I/O Throughput Timeline**: Renders a dedicated Mermaid line chart tracking disk throughput (Read/Write MB) and network transfer (RX/TX MB) over elapsed time whenever `monitor-disk-io` or `monitor-network` is enabled.
+- **Cross-Platform Out-Of-Memory (OOM) Autopsy**: Automatic crash inspection detects memory exhaustion across Linux (cgroup v2 & `vmstat`), macOS (Jetsam and DiagnosticReports), and Windows (Resource-Exhaustion-Detector Event ID 2004), placing a high-visibility cautionary advisory in the step summary.
 - **Dynamic Mermaid Budgeting**: Dynamically downsamples high-density metrics using peak-preserving bucketing to stay strictly within Mermaid's 50,000 character ceiling while maintaining exact spike fidelity.
 
 ## Usage
@@ -121,7 +123,7 @@ steps:
 | `peak_memory_mb` | Peak RAM usage in megabytes observed during the job |
 | `avg_cpu_percent` | Average CPU utilization percentage across the job |
 | `disk_consumed_mb` | Net disk space consumed in megabytes |
-| `oom_detected` | Boolean indicating whether a Linux kernel OOM kill occurred |
+| `oom_detected` | Boolean indicating whether a kernel Out-Of-Memory (OOM) or resource exhaustion kill occurred across Linux, macOS, or Windows |
 | `phase_name` | Name of the ended phase |
 | `phase_duration_seconds` | Duration of the phase in seconds |
 | `phase_peak_memory_mb` | Peak RAM usage in megabytes during the phase |

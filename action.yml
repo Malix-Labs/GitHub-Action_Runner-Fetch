@@ -69,7 +69,7 @@ outputs:
   disk_consumed_mb:
     description: "Net disk space consumed in megabytes during the job."
   oom_detected:
-    description: "Boolean indicating whether a Linux kernel Out-Of-Memory (OOM) kill occurred."
+    description: "Boolean indicating whether a kernel Out-Of-Memory (OOM) or resource exhaustion kill occurred across Linux, macOS, or Windows."
   phase_name:
     description: "Name of the ended phase."
   phase_duration_seconds:
