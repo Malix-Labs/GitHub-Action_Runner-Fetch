@@ -15,7 +15,7 @@
   };
 
   outputs =
-    inputs@{ self, flake-parts, ... }:
+    inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
 
@@ -103,10 +103,28 @@
             '';
           };
 
-          devShells.default = config.pre-commit.devShell;
+          devShells.default = pkgs.mkShell {
+            inputsFrom = [ config.pre-commit.devShell ];
+            packages = [
+              pkgs.nodejs_24
+              pkgs.gawk
+              pkgs.coreutils
+              pkgs.gh
+            ];
+          };
 
           checks = {
             test-suite =
+              let
+                testSrc = pkgs.lib.fileset.toSource {
+                  root = ./.;
+                  fileset = pkgs.lib.fileset.unions [
+                    ./src
+                    ./tests
+                    ./action.yml
+                  ];
+                };
+              in
               pkgs.runCommand "test-suite"
                 {
                   nativeBuildInputs = [
@@ -117,7 +135,7 @@
                 }
                 ''
                   export HOME=$TMPDIR
-                  cp -r ${self}/* .
+                  cp -r ${testSrc}/* .
                   chmod -R +w .
                   ./tests/test_scenarios.sh
                   touch $out
