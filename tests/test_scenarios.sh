@@ -940,4 +940,82 @@ fi
 
 echo "Test 22 PASSED."
 
+echo "=== Test 23: Cross-platform OOM diagnostics (macOS Jetsam & Windows Event 2004) ==="
+# 1. macOS Jetsam test
+setup_test "test23_macos"
+export RUNNER_OS="macOS"
+mkdir -p "$RUN_DIR/runner-fetch"
+mkdir -p "$HOME/Library/Logs/DiagnosticReports"
+touch "$HOME/Library/Logs/DiagnosticReports/JetsamEvent-2026-10-04-120000.ips"
+
+t0=$(date +%s)
+printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\n" >|"$RUN_DIR/runner-fetch/samples.tsv"
+printf "%d\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\n" "$((t0 - 4))" >>"$RUN_DIR/runner-fetch/samples.tsv"
+printf "%d\t15\t15\t0\t0\t30\t2500\t5500\t49800\t0\n" "$((t0 - 2))" >>"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+
+rm -f "$HOME/Library/Logs/DiagnosticReports/JetsamEvent-2026-10-04-120000.ips"
+
+if ! grep -q "Out-Of-Memory (Jetsam) Kill Detected!" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: macOS Jetsam OOM banner missing in GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+node -e "
+const fs = require('fs');
+const summary = JSON.parse(fs.readFileSync('$RUN_DIR/runner-fetch/summary.json', 'utf8'));
+if (!summary.oom_detected) {
+  console.error('Error: summary.oom_detected false on macOS Jetsam');
+  process.exit(1);
+}
+"
+
+# 2. Windows Event 2004 test
+setup_test "test23_windows"
+export RUNNER_OS="Windows"
+mkdir -p "$RUN_DIR/runner-fetch"
+mkdir -p "$RUN_DIR/bin"
+cat <<'EOF_MOCK' >"$RUN_DIR/bin/wevtutil"
+#!/bin/sh
+cat <<'EOF_WEVT'
+Event[0]:
+  Log Name: System
+  Source: Microsoft-Windows-Resource-Exhaustion-Detector
+  Date: 2026-10-04T12:00:00.000
+  Event ID: 2004
+  Description:
+Windows successfully diagnosed a low virtual memory condition. The following programs consumed the most virtual memory: cargo.exe (1234) consumed 4500000000 bytes.
+EOF_WEVT
+EOF_MOCK
+chmod +x "$RUN_DIR/bin/wevtutil"
+ORIGINAL_PATH="$PATH"
+export PATH="$RUN_DIR/bin:$PATH"
+
+t0=$(date +%s)
+printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\n" >|"$RUN_DIR/runner-fetch/samples.tsv"
+printf "%d\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\n" "$((t0 - 4))" >>"$RUN_DIR/runner-fetch/samples.tsv"
+printf "%d\t15\t15\t0\t0\t30\t2500\t5500\t49800\t0\n" "$((t0 - 2))" >>"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+export PATH="$ORIGINAL_PATH"
+
+if ! grep -q "Resource Exhaustion / Out-Of-Memory Detected!" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Windows Resource Exhaustion banner missing in GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+node -e "
+const fs = require('fs');
+const summary = JSON.parse(fs.readFileSync('$RUN_DIR/runner-fetch/summary.json', 'utf8'));
+if (!summary.oom_detected) {
+  console.error('Error: summary.oom_detected false on Windows Event 2004');
+  process.exit(1);
+}
+"
+
+echo "Test 23 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

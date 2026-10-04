@@ -987,33 +987,61 @@ if [ "$ENABLE_MEM" = "true" ]; then
 		OOM_DETAILS="Kernel recorded ${OOM_COUNT} process kill event(s)."
 	fi
 
-	if [ "$OOM_DETECTED" = "false" ] && [ "$TARGET_OS" = "Linux" ]; then
-		CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
-		CG_EVENTS=""
-		[ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ] && CG_EVENTS="/sys/fs/cgroup${CGPATH}/memory.events"
-		[ -z "$CG_EVENTS" ] && [ -r /sys/fs/cgroup/memory.events ] && CG_EVENTS="/sys/fs/cgroup/memory.events"
+	if [ "$OOM_DETECTED" = "false" ]; then
+		case "$TARGET_OS" in
+		"Linux")
+			CGPATH=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup 2>/dev/null || echo "")
+			CG_EVENTS=""
+			[ -n "$CGPATH" ] && [ -r "/sys/fs/cgroup${CGPATH}/memory.events" ] && CG_EVENTS="/sys/fs/cgroup${CGPATH}/memory.events"
+			[ -z "$CG_EVENTS" ] && [ -r /sys/fs/cgroup/memory.events ] && CG_EVENTS="/sys/fs/cgroup/memory.events"
 
-		if [ -n "$CG_EVENTS" ]; then
-			CGROUP_OOM=$(awk '/oom_kill / {print $2}' "$CG_EVENTS" 2>/dev/null || echo 0)
-			if [ "$CGROUP_OOM" -gt 0 ]; then
-				OOM_DETECTED="true"
-				OOM_DETAILS="Cgroup memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
+			if [ -n "$CG_EVENTS" ]; then
+				CGROUP_OOM=$(awk '/oom_kill / {print $2}' "$CG_EVENTS" 2>/dev/null || echo 0)
+				if [ "$CGROUP_OOM" -gt 0 ]; then
+					OOM_DETECTED="true"
+					OOM_DETAILS="Cgroup memory.events confirmed ${CGROUP_OOM} OOM kill(s)."
+				fi
 			fi
-		fi
-		if [ "$OOM_DETECTED" = "false" ] && [ -r /proc/vmstat ]; then
-			VMSTAT_OOM=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
-			if [ "$VMSTAT_OOM" -gt 0 ]; then
-				OOM_DETECTED="true"
-				OOM_DETAILS="/proc/vmstat recorded ${VMSTAT_OOM} kernel OOM kill(s)."
+			if [ "$OOM_DETECTED" = "false" ] && [ -r /proc/vmstat ]; then
+				VMSTAT_OOM=$(awk '/oom_kill / {print $2}' /proc/vmstat 2>/dev/null || echo 0)
+				if [ "$VMSTAT_OOM" -gt 0 ]; then
+					OOM_DETECTED="true"
+					OOM_DETAILS="/proc/vmstat recorded ${VMSTAT_OOM} kernel OOM kill(s)."
+				fi
 			fi
-		fi
-		if [ "$OOM_DETECTED" = "false" ] && command -v dmesg >/dev/null 2>&1; then
-			DMESG_OOM=$(dmesg 2>/dev/null | grep -iE 'killed process|out of memory: killed' | tail -n 1 || true)
-			if [ -n "$DMESG_OOM" ]; then
-				OOM_DETECTED="true"
-				OOM_DETAILS="${DMESG_OOM}"
+			if [ "$OOM_DETECTED" = "false" ] && command -v dmesg >/dev/null 2>&1; then
+				DMESG_OOM=$(dmesg 2>/dev/null | grep -iE 'killed process|out of memory: killed' | tail -n 1 || true)
+				if [ -n "$DMESG_OOM" ]; then
+					OOM_DETECTED="true"
+					OOM_DETAILS="${DMESG_OOM}"
+				fi
 			fi
-		fi
+			;;
+
+		"macOS")
+			MINS=$(((${DURATION_SEC:-0} / 60) + 2))
+			MAC_OOM_REPORT=$(find /Library/Logs/DiagnosticReports ~/Library/Logs/DiagnosticReports -type f -name "JetsamEvent*.ips" -mmin -"$MINS" 2>/dev/null | head -n 1 || true)
+			if [ -z "$MAC_OOM_REPORT" ]; then
+				MAC_OOM_REPORT=$(find /Library/Logs/DiagnosticReports ~/Library/Logs/DiagnosticReports -type f -name "*.ips" -mmin -"$MINS" -exec grep -l "RESOURCE_TYPE_MEMORY" {} + 2>/dev/null | head -n 1 || true)
+			fi
+			if [ -n "$MAC_OOM_REPORT" ]; then
+				OOM_DETECTED="true"
+				OOM_DETAILS="macOS kernel Jetsam/memorystatus terminated process due to memory exhaustion ($(basename "$MAC_OOM_REPORT"))."
+			fi
+			;;
+
+		"Windows")
+			if command -v wevtutil.exe >/dev/null 2>&1 || command -v wevtutil >/dev/null 2>&1; then
+				WIN_OOM_MS=$(((${DURATION_SEC:-0} + 60) * 1000))
+				WIN_OOM=$(wevtutil qe System /q:"*[System[EventID=2004 and TimeCreated[timediff(@SystemTime) <= ${WIN_OOM_MS}]]]" /c:1 /rd:true /f:text 2>/dev/null || true)
+				if [ -n "$WIN_OOM" ]; then
+					OOM_DETECTED="true"
+					OOM_DETAILS=$(printf '%s' "$WIN_OOM" | grep -iE 'Windows successfully diagnosed|consumed the most virtual memory' | head -n 1 | tr '\r\n' '  ' || echo "")
+					[ -z "$OOM_DETAILS" ] && OOM_DETAILS="Windows Resource-Exhaustion-Detector confirmed low virtual memory condition (Event 2004)."
+				fi
+			fi
+			;;
+		esac
 	fi
 fi
 
@@ -1038,8 +1066,20 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		echo ""
 		if [ "$OOM_DETECTED" = "true" ]; then
 			echo "> [!CAUTION]"
-			echo "> **Out-Of-Memory (OOM) Kill Detected!**"
-			echo "> The Linux kernel terminated one or more processes due to memory exhaustion."
+			case "$TARGET_OS" in
+			"Windows")
+				echo "> **Resource Exhaustion / Out-Of-Memory Detected!**"
+				echo "> The Windows operating system detected a critical low virtual memory condition."
+				;;
+			"macOS")
+				echo "> **Out-Of-Memory (Jetsam) Kill Detected!**"
+				echo "> The macOS kernel terminated one or more processes due to memory exhaustion."
+				;;
+			*)
+				echo "> **Out-Of-Memory (OOM) Kill Detected!**"
+				echo "> The Linux kernel terminated one or more processes due to memory exhaustion."
+				;;
+			esac
 			[ -n "$OOM_DETAILS" ] && echo "> Details: \`${OOM_DETAILS}\`"
 			echo ""
 		fi
