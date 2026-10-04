@@ -61,7 +61,7 @@ fi
 # 2. Single-pass awk processor: Aggregates metrics, formats sparklines, generates Mermaid chart & Prometheus export
 STATS=$(awk -F'\t' -v rname="$RUNNER_NAME" -v prom_file="$PROM_TARGET" -v chart_file="$CHART_FILE" -v io_chart_file="$IO_CHART_FILE" -v enable_cpu="$ENABLE_CPU" -v enable_mem="$ENABLE_MEM" -v enable_disk="$ENABLE_DISK" -v enable_swap="$ENABLE_SWAP" -v enable_net="$ENABLE_NET" -v enable_disk_io="$ENABLE_DISK_IO" -v enable_gpu="$ENABLE_GPU" -v runner_start="$RUNNER_START_EPOCH" '
 function get_spark(hist, n, max_val,    res, i, step, pts, v, idx) {
-	if (n < 1) return "—"
+	if (n < 1) return "-"
 	pts = (n > 30 ? 30 : n)
 	step = (n > 30 ? n / 30 : 1)
 	res = ""
@@ -780,19 +780,19 @@ SWAP_INIT_MB="${SWAP_INIT_MB:-0}"
 SWAP_PEAK_MB="${SWAP_PEAK_MB:-0}"
 SWAP_FINAL_MB="${SWAP_FINAL_MB:-0}"
 SWAP_TOTAL_MB="${SWAP_TOTAL_MB:-0}"
-SWAP_SPARKLINE="${SWAP_SPARKLINE:-—}"
+SWAP_SPARKLINE="${SWAP_SPARKLINE:--}"
 NET_RX_MB="${NET_RX_MB:-0}"
 NET_TX_MB="${NET_TX_MB:-0}"
-NET_SPARKLINE="${NET_SPARKLINE:-—}"
+NET_SPARKLINE="${NET_SPARKLINE:--}"
 DISK_READ_MB="${DISK_READ_MB:-0}"
 DISK_WRITE_MB="${DISK_WRITE_MB:-0}"
-DISK_IO_SPARKLINE="${DISK_IO_SPARKLINE:-—}"
+DISK_IO_SPARKLINE="${DISK_IO_SPARKLINE:--}"
 GPU_AVG="${GPU_AVG:-0}"
 GPU_PEAK="${GPU_PEAK:-0}"
 VRAM_PEAK_MB="${VRAM_PEAK_MB:-0}"
 VRAM_TOTAL_MB="${VRAM_TOTAL_MB:-0}"
-GPU_SPARKLINE="${GPU_SPARKLINE:-—}"
-VRAM_SPARKLINE="${VRAM_SPARKLINE:-—}"
+GPU_SPARKLINE="${GPU_SPARKLINE:--}"
+VRAM_SPARKLINE="${VRAM_SPARKLINE:--}"
 
 # 3. Storage Baseline & Pre-installed Bloat Extraction
 STORAGE_BASELINE_FILE="${OUT_DIR}/storage_baseline.tsv"
@@ -866,8 +866,8 @@ if [ -f "$PHASES_FILE" ]; then
 			s = off % 60
 			off_str = sprintf("+%dm %02ds", m, s)
 		}
-		disk_str = (disk > 0 ? sprintf("%d MB free", disk) : "—")
-		printf "| 📍 **%s** | *Milestone* (%s) | %d MB | %d%% | %s |\n", name, off_str, mem, cpu, disk_str
+		disk_str = (disk > 0 ? sprintf("%d MB free", disk) : "-")
+		printf "| **%s** | *Milestone* (%s) | %d MB | %d%% | %s |\n", name, off_str, mem, cpu, disk_str
 	}' "$PHASES_FILE")
 
 	PHASES_JSON=$(awk -F'\t' '
@@ -1062,7 +1062,7 @@ echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
 # 7. Write to $GITHUB_STEP_SUMMARY
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 	{
-		echo "## 📊 Runner Telemetry & Resource Summary"
+		echo "## Runner Telemetry & Resource Summary"
 		echo ""
 		if [ "$OOM_DETECTED" = "true" ]; then
 			echo "> [!CAUTION]"
@@ -1085,31 +1085,35 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 		fi
 		echo "| Metric | Baseline / Min | Peak / Max | Final / Avg | Trend |"
 		echo "| :--- | :--- | :--- | :--- | :--- |"
-		[ "$ENABLE_CPU" = "true" ] && echo "| **CPU Utilization** | — | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
+		[ "$ENABLE_CPU" = "true" ] && echo "| **CPU Utilization** | - | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
 		[ "$ENABLE_MEM" = "true" ] && echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
 		[ "$ENABLE_SWAP" = "true" ] && echo "| **Swap Usage** | ${SWAP_INIT_MB} MB | **${SWAP_PEAK_MB} MB** | ${SWAP_FINAL_MB} MB / ${SWAP_TOTAL_MB} MB | \`${SWAP_SPARKLINE}\` |"
-		[ "$ENABLE_NET" = "true" ] && echo "| **Network I/O** | — | RX: **${NET_RX_MB} MB** | TX: **${NET_TX_MB} MB** | \`${NET_SPARKLINE}\` |"
-		[ "$ENABLE_DISK_IO" = "true" ] && echo "| **Disk I/O** | — | Read: **${DISK_READ_MB} MB** | Write: **${DISK_WRITE_MB} MB** | \`${DISK_IO_SPARKLINE}\` |"
-		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU Utilization** | — | **${GPU_PEAK}%** | Avg: **${GPU_AVG}%** | \`${GPU_SPARKLINE}\` |"
-		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU VRAM** | — | **${VRAM_PEAK_MB} MB** | Total: ${VRAM_TOTAL_MB} MB | \`${VRAM_SPARKLINE}\` |"
+		[ "$ENABLE_NET" = "true" ] && echo "| **Network I/O** | - | RX: **${NET_RX_MB} MB** | TX: **${NET_TX_MB} MB** | \`${NET_SPARKLINE}\` |"
+		[ "$ENABLE_DISK_IO" = "true" ] && echo "| **Disk I/O** | - | Read: **${DISK_READ_MB} MB** | Write: **${DISK_WRITE_MB} MB** | \`${DISK_IO_SPARKLINE}\` |"
+		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU Utilization** | - | **${GPU_PEAK}%** | Avg: **${GPU_AVG}%** | \`${GPU_SPARKLINE}\` |"
+		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU VRAM** | - | **${VRAM_PEAK_MB} MB** | Total: ${VRAM_TOTAL_MB} MB | \`${VRAM_SPARKLINE}\` |"
 		if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
 			if [ "$ENABLE_DISK" = "true" ]; then
-				echo "| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | — |"
+				echo "| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
 			else
-				echo "| **Disk Storage Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | — | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | — |"
+				echo "| **Disk Storage Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | - | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
 			fi
 		elif [ "$ENABLE_DISK" = "true" ]; then
-			echo "| **Disk Consumed** | — | Net: **${DISK_CONSUMED_MB} MB** | — | — |"
+			echo "| **Disk Consumed** | - | Net: **${DISK_CONSUMED_MB} MB** | - | - |"
 		fi
-		[ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | — | **${CPU_STEAL_MAX}%** ⚠️ | Hypervisor throttling detected | — |"
+		[ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | - | **${CPU_STEAL_MAX}%** | Hypervisor throttling detected | - |"
 		echo ""
 		if [ -n "$PHASE_TABLE_ROWS" ]; then
-			echo "### ⏱️ Phase Breakdown"
+			echo "### Phase Breakdown"
 			echo ""
 			echo "| Phase / Milestone | Duration / Offset | Peak RAM | Avg CPU | Disk Consumed / Free |"
 			echo "| :--- | :--- | :--- | :--- | :--- |"
 			echo "$PHASE_TABLE_ROWS"
 			echo "| **Total Job** | ${DURATION_SEC}s | ${MEM_PEAK_MB} MB | ${CPU_AVG}% | ${DISK_CONSUMED_MB} MB |"
+			echo ""
+		fi
+		if [ -s "$GANTT_FILE" ]; then
+			cat "$GANTT_FILE"
 			echo ""
 		fi
 		if [ -s "$CHART_FILE" ]; then
@@ -1124,15 +1128,11 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 			cat "$IO_CHART_FILE"
 			echo ""
 		fi
-		if [ -s "$GANTT_FILE" ]; then
-			cat "$GANTT_FILE"
-			echo ""
-		fi
 		HUMAN_DUR=$(printf "%02d:%02d:%02d:%02d" "$((DURATION_SEC / 86400))" "$(((DURATION_SEC % 86400) / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")
 		if [ "$JOB_OFFSET_SEC" -gt 0 ]; then
-			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples · started +${JOB_OFFSET_SEC}s after job start)*"
+			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s, ${SAMPLE_COUNT} samples, started +${JOB_OFFSET_SEC}s after job start)*"
 		else
-			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s · ${SAMPLE_COUNT} samples)*"
+			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s, ${SAMPLE_COUNT} samples)*"
 		fi
 		echo ""
 	} >>"$GITHUB_STEP_SUMMARY"

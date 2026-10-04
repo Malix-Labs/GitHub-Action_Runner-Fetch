@@ -358,7 +358,7 @@ fi
 export STATE_is_primary_init="true"
 (cd "$REPO_ROOT" && node src/post.js)
 
-if ! grep -q "### ⏱️ Phase Breakdown" "$GITHUB_STEP_SUMMARY"; then
+if ! grep -q "### Phase Breakdown" "$GITHUB_STEP_SUMMARY"; then
 	echo "Error: Phase Breakdown section missing in GITHUB_STEP_SUMMARY" >&2
 	exit 1
 fi
@@ -728,11 +728,23 @@ if ! grep -q "Setup : active" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
 	exit 1
 fi
 
-if ! grep -q "📍 \*\*Cache Restored\*\*" "$GITHUB_STEP_SUMMARY"; then
+if ! grep -q "\| \*\*Cache Restored\*\* \|" "$GITHUB_STEP_SUMMARY"; then
 	echo "Error: Milestone row missing in GITHUB_STEP_SUMMARY" >&2
 	cat "$GITHUB_STEP_SUMMARY" >&2
 	exit 1
 fi
+
+# Verify Gantt diagram appears before the Resource Utilization Timeline chart
+node -e "
+const fs = require('fs');
+const content = fs.readFileSync('$GITHUB_STEP_SUMMARY', 'utf8');
+const ganttIdx = content.indexOf('gantt\n');
+const chartIdx = content.indexOf('### Resource Utilization Timeline');
+if (ganttIdx === -1 || chartIdx === -1 || ganttIdx > chartIdx) {
+  console.error('Error: Gantt chart must precede the Resource Utilization Timeline chart. ganttIdx:', ganttIdx, 'chartIdx:', chartIdx);
+  process.exit(1);
+}
+"
 
 node -e "
 const fs = require('fs');
