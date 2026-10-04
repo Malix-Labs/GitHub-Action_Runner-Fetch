@@ -190,6 +190,11 @@ EOF
 			IFS='	' read -r NET_RX_MB NET_TX_MB <<EOF
 $NET_BYTES
 EOF
+		elif [ "$TARGET_OS" = "Windows" ]; then
+			NET_BYTES=$(netstat -e 2>/dev/null | awk '{ gsub(/\r/, "") } tolower($1) ~ /^bytes/ { printf "%d\t%d\n", int($2/1048576), int($3/1048576) }' || echo "0	0")
+			IFS='	' read -r NET_RX_MB NET_TX_MB <<EOF
+$NET_BYTES
+EOF
 		fi
 		NET_RX_MB="${NET_RX_MB:-0}"
 		NET_TX_MB="${NET_TX_MB:-0}"

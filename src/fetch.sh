@@ -134,7 +134,9 @@ fi
 
 STORAGE_BASELINE_FILE="${OUT_DIR}/storage_baseline.tsv"
 if [ ! -f "$STORAGE_BASELINE_FILE" ] && command -v df >/dev/null 2>&1; then
-	df -k -P / 2>/dev/null | awk 'NR == 2 { printf "%s\t%s\t%s\n", $2 * 1024, $3 * 1024, $4 * 1024 }' >|"$STORAGE_BASELINE_FILE" || true
+	DF_TARGET="/"
+	[ "$TARGET_OS" = "Windows" ] && DF_TARGET="/c"
+	df -k -P "$DF_TARGET" 2>/dev/null | awk 'NR == 2 { printf "%s\t%s\t%s\n", $2 * 1024, $3 * 1024, $4 * 1024 }' >|"$STORAGE_BASELINE_FILE" || true
 fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then

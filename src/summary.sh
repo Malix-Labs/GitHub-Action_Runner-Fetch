@@ -806,7 +806,9 @@ fi
 
 if [ -z "$ROOT_TOTAL_BYTES" ] || [ "$ROOT_TOTAL_BYTES" -le 0 ]; then
 	if command -v df >/dev/null 2>&1; then
-		STATS_DF=$(df -k -P / 2>/dev/null | awk 'NR == 2 { printf "%s\t%s\t%s\n", $2 * 1024, $3 * 1024, $4 * 1024 }' || echo "")
+		DF_TARGET="/"
+		[ "$TARGET_OS" = "Windows" ] && DF_TARGET="/c"
+		STATS_DF=$(df -k -P "$DF_TARGET" 2>/dev/null | awk 'NR == 2 { printf "%s\t%s\t%s\n", $2 * 1024, $3 * 1024, $4 * 1024 }' || echo "")
 		if [ -n "$STATS_DF" ]; then
 			IFS='	' read -r ROOT_TOTAL_BYTES ROOT_USED_BYTES ROOT_FREE_BYTES <<EOF
 $STATS_DF

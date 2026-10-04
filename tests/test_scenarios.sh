@@ -818,4 +818,56 @@ fi
 
 echo "Test 20 PASSED."
 
+echo "=== Test 21: Windows target platform storage baseline & network telemetry parsing ==="
+setup_test "test21"
+export RUNNER_OS="Windows"
+export INPUT_MONITOR_NETWORK="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+
+# Mock storage_baseline.tsv on Windows (256GB total, 64GB used, 192GB free)
+printf "%d\t%d\t%d\n" 274877906944 68719476736 206158430208 >|"$RUN_DIR/runner-fetch/storage_baseline.tsv"
+
+# Mock samples with network metrics
+{
+	printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\n"
+	printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\t0\t0\t100\t50\n"
+	printf "1789000002\t15\t15\t0\t0\t30\t2500\t5500\t50000\t0\t0\t0\t300\t150\n"
+} >|"$RUN_DIR/runner-fetch/samples.tsv"
+
+(cd "$REPO_ROOT" && node src/post.js)
+
+if ! grep -q "Pre-installed: \*\*64.0 GB\*\* (25%)" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Expected Windows pre-installed storage baseline not found in GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "Free: \*\*192.0 GB\*\* / 256.0 GB" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Expected Windows free storage baseline not found in GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "RX: \*\*200 MB\*\*" "$GITHUB_STEP_SUMMARY" || ! grep -q "TX: \*\*100 MB\*\*" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Expected Network delta not found in GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+# Verify netstat -e parsing logic in monitor.sh
+MOCK_NETSTAT="Interface Statistics
+
+                           Received            Sent
+
+Bytes                    3145728000         1048576000
+Unicast packets           12345678          8765432
+"
+PARSED_NET=$(echo "$MOCK_NETSTAT" | awk '{ gsub(/\r/, "") } tolower($1) ~ /^bytes/ { printf "%d\t%d\n", int($2/1048576), int($3/1048576) }')
+if [ "$PARSED_NET" != "3000	1000" ]; then
+	printf "Error: Windows netstat -e awk parser returned '%s', expected '3000\\t1000'\\n" "$PARSED_NET" >&2
+	exit 1
+fi
+
+echo "Test 21 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="
