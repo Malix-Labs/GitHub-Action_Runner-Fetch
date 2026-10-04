@@ -462,7 +462,7 @@ END {
 		}
 	}
 
-	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s\t%d\n",
+	printf "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%s\t%s\t%d\t%d\n",
 		count, duration, avg_cpu, peak_cpu, max_steal,
 		m_init, peak_mem, m_final, tot_mem, peak_mem_pct,
 		d_consumed, oom_count,
@@ -475,7 +475,8 @@ END {
 		tot_dr, tot_dw, dio_spark,
 		avg_gpu, peak_gpu, peak_vram, last_vram_tot,
 		gpu_spark, vram_spark,
-		(last_chart_w > 0 ? last_chart_w : 700 + count)
+		(last_chart_w > 0 ? last_chart_w : 700 + count),
+		job_start
 }' "$SAMPLES_FILE")
 
 IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
@@ -484,11 +485,15 @@ IFS='	' read -r SAMPLE_COUNT DURATION_SEC CPU_AVG CPU_PEAK CPU_STEAL_MAX \
 	SWAP_INIT_MB SWAP_PEAK_MB SWAP_FINAL_MB SWAP_TOTAL_MB SWAP_SPARKLINE \
 	NET_RX_MB NET_TX_MB NET_SPARKLINE \
 	DISK_READ_MB DISK_WRITE_MB DISK_IO_SPARKLINE \
-	GPU_AVG GPU_PEAK VRAM_PEAK_MB VRAM_TOTAL_MB GPU_SPARKLINE VRAM_SPARKLINE CHART_WIDTH <<EOF
+	GPU_AVG GPU_PEAK VRAM_PEAK_MB VRAM_TOTAL_MB GPU_SPARKLINE VRAM_SPARKLINE \
+	CHART_WIDTH JOB_START_EPOCH <<EOF
 $STATS
 EOF
 
 CHART_WIDTH="${CHART_WIDTH:-1000}"
+JOB_START_EPOCH="${JOB_START_EPOCH:-0}"
+OFFSET_START="${JOB_OFFSET_SEC:-0}"
+OFFSET_END="$((${JOB_OFFSET_SEC:-0} + ${DURATION_SEC:-0}))"
 
 SWAP_INIT_MB="${SWAP_INIT_MB:-0}"
 SWAP_PEAK_MB="${SWAP_PEAK_MB:-0}"
@@ -557,7 +562,7 @@ MILESTONES_JSON="[]"
 PHASE_TABLE_ROWS=""
 
 if [ -f "$PHASES_FILE" ]; then
-	PHASE_TABLE_ROWS=$(awk -F'\t' -v job_start="${RUNNER_START_EPOCH:-0}" '
+	PHASE_TABLE_ROWS=$(awk -F'\t' -v job_start="${JOB_START_EPOCH:-0}" '
 	$1 == "SUMMARY" {
 		name = $2; dur = $3; mem = $4; cpu = $5; disk = $6
 		dur_str = dur "s"
@@ -593,7 +598,7 @@ if [ -f "$PHASES_FILE" ]; then
 	END { printf "]" }
 	' "$PHASES_FILE")
 
-	MILESTONES_JSON=$(awk -F'\t' -v job_start="${RUNNER_START_EPOCH:-0}" '
+	MILESTONES_JSON=$(awk -F'\t' -v job_start="${JOB_START_EPOCH:-0}" '
 	BEGIN { printf "[" }
 	$1 == "MILESTONE" {
 		if (count > 0) printf ","
@@ -606,7 +611,17 @@ if [ -f "$PHASES_FILE" ]; then
 	END { printf "]" }
 	' "$PHASES_FILE")
 
-	GANTT_CONTENT=$(awk -F'\t' -v w="${CHART_WIDTH:-1000}" -v job_start="${RUNNER_START_EPOCH:-0}" '
+	GANTT_CONTENT=$(awk -F'\t' -v w="${CHART_WIDTH:-1000}" -v job_start="${JOB_START_EPOCH:-0}" -v off_start="${OFFSET_START:-0}" -v off_end="${OFFSET_END:-0}" '
+	function fmt_time(sec,   d, rem, h, m, s) {
+		if (sec < 0) sec = 0
+		d = 1 + int(sec / 86400)
+		rem = sec % 86400
+		h = int(rem / 3600)
+		rem = rem % 3600
+		m = int(rem / 60)
+		s = rem % 60
+		return sprintf("2000-01-%02d %02d:%02d:%02d", d, h, m, s)
+	}
 	BEGIN {
 		has_items = 0
 		phase_count = 0
@@ -627,7 +642,7 @@ if [ -f "$PHASES_FILE" ]; then
 		if (e <= s) e = s + 1
 		gsub(/:/, "-", name)
 		phase_count++
-		phases[phase_count] = sprintf("    %s : active, %d, %d\n", name, s, e)
+		phases[phase_count] = sprintf("    %s : active, %s, %s\n", name, fmt_time(s), fmt_time(e))
 		has_items = 1
 	}
 	$1 == "MILESTONE" {
@@ -639,17 +654,29 @@ if [ -f "$PHASES_FILE" ]; then
 		if (t < 0) t = 0
 		gsub(/:/, "-", name)
 		milestone_count++
-		milestones[milestone_count] = sprintf("    %s : milestone, %d, %d\n", name, t, t)
+		milestones[milestone_count] = sprintf("    %s : milestone, %s, %s\n", name, fmt_time(t), fmt_time(t))
 		has_items = 1
 	}
 	END {
 		if (has_items == 1) {
+			if (off_end >= 86400) {
+				axis_fmt = "Day %d"
+			} else if (off_end >= 3600) {
+				axis_fmt = "%H:%M:%S"
+			} else {
+				axis_fmt = "%M:%S"
+			}
+			anchor_s = fmt_time(off_start)
+			anchor_e = fmt_time((off_end > off_start ? off_end : off_start + 1))
+
 			printf "```mermaid\n"
 			printf "%%%%{init:{\"gantt\":{\"useWidth\":%d,\"useMaxWidth\":false}}}%%%%\n", (w > 0 ? w : 1000)
 			printf "gantt\n"
 			printf "    title Workflow Phases & Milestones\n"
-			printf "    dateFormat X\n"
-			printf "    axisFormat %%s\n"
+			printf "    dateFormat YYYY-MM-DD HH:mm:ss\n"
+			printf "    axisFormat %s\n", axis_fmt
+			printf "    section Overall\n"
+			printf "    Job Telemetry : done, %s, %s\n", anchor_s, anchor_e
 			if (phase_count > 0) {
 				printf "    section Phases\n"
 				for (i = 1; i <= phase_count; i++) printf "%s", phases[i]

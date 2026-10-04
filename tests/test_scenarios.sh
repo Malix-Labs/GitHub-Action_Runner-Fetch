@@ -704,6 +704,18 @@ if ! grep -q "useWidth" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
 	exit 1
 fi
 
+if ! grep -q "dateFormat YYYY-MM-DD HH:mm:ss" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
+	echo "Error: Universal dateFormat missing in gantt.mermaid" >&2
+	cat "$RUN_DIR/runner-fetch/gantt.mermaid" >&2
+	exit 1
+fi
+
+if ! grep -q "Job Telemetry : done" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
+	echo "Error: Job Telemetry anchor missing in gantt.mermaid" >&2
+	cat "$RUN_DIR/runner-fetch/gantt.mermaid" >&2
+	exit 1
+fi
+
 if ! grep -q "Cache Restored : milestone" "$RUN_DIR/runner-fetch/gantt.mermaid"; then
 	echo "Error: Milestone 'Cache Restored' missing in gantt.mermaid" >&2
 	cat "$RUN_DIR/runner-fetch/gantt.mermaid" >&2
