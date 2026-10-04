@@ -194,7 +194,7 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 	if (has_swap) lines_overhead = lines_overhead "    line \"Swap\" []\n"
 	static_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":}}}%%\nxychart\n    title \"Resource Utilization Timeline\"\n    x-axis \"" x_title "\" " x_min " --> " x_max "\n    y-axis \"Percentage (%)\" 0 --> 100\n" lines_overhead "```\n")
 
-	if (static_overhead + length(700 + count) + get_points_len(count) <= target_limit) {
+	if (static_overhead + length(count > 700 ? count : 700) + get_points_len(count) <= target_limit) {
 		# 100% of all calculated points fit inside the ceiling directly
 		pts = count
 	} else {
@@ -204,7 +204,7 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 		pts = 2
 		while (low <= high) {
 			mid = int((low + high) / 2)
-			if (static_overhead + length(700 + mid) + get_points_len(mid) <= target_limit) {
+			if (static_overhead + length(mid > 700 ? mid : 700) + get_points_len(mid) <= target_limit) {
 				pts = mid
 				low = mid + 1
 			} else {
@@ -214,7 +214,7 @@ function build_mermaid(    job_start, offset_start, offset_end, dur, x_title, x_
 	}
 
 	# Dynamically scale canvas width smoothly with point density (enforcing >= 1px minimum gap per sample)
-	w = 700 + pts
+	w = (pts > 700 ? pts : 700)
 	last_chart_w = w
 
 	cfg = "%%{init:{\"xyChart\":{\"width\":" w "}}}%%\n"
@@ -408,9 +408,9 @@ function build_io_mermaid(    job_start, offset_start, offset_end, x_title, x_mi
 	if (enable_net == "true") lines_overhead = lines_overhead "    line \"Net RX\" []\n    line \"Net TX\" []\n"
 	static_overhead = length("```mermaid\n%%{init:{\"xyChart\":{\"width\":}}}%%\nxychart\n    title \"I/O Throughput Timeline\"\n    x-axis \"" x_title "\" " x_min " --> " x_max "\n    y-axis \"Throughput (MB)\" 0 --> 999999\n" lines_overhead "```\n")
 
-	if (pts > 0 && static_overhead + length(700 + pts) + get_io_points_len(pts) <= target_limit) {
+	if (pts > 0 && static_overhead + length(pts > 700 ? pts : 700) + get_io_points_len(pts) <= target_limit) {
 		pts_io = pts
-	} else if (static_overhead + length(700 + count) + get_io_points_len(count) <= target_limit) {
+	} else if (static_overhead + length(count > 700 ? count : 700) + get_io_points_len(count) <= target_limit) {
 		pts_io = count
 	} else {
 		low = 2
@@ -418,7 +418,7 @@ function build_io_mermaid(    job_start, offset_start, offset_end, x_title, x_mi
 		pts_io = 2
 		while (low <= high) {
 			mid = int((low + high) / 2)
-			if (static_overhead + length(700 + mid) + get_io_points_len(mid) <= target_limit) {
+			if (static_overhead + length(mid > 700 ? mid : 700) + get_io_points_len(mid) <= target_limit) {
 				pts_io = mid
 				low = mid + 1
 			} else {
@@ -429,7 +429,7 @@ function build_io_mermaid(    job_start, offset_start, offset_end, x_title, x_mi
 
 	if (last_chart_w > 0) w = last_chart_w
 	else {
-		w = 700 + pts_io
+		w = (pts_io > 700 ? pts_io : 700)
 		last_chart_w = w
 	}
 
@@ -756,7 +756,7 @@ END {
 		tot_dr, tot_dw, dio_spark,
 		avg_gpu, peak_gpu, peak_vram, last_vram_tot,
 		gpu_spark, vram_spark,
-		(last_chart_w > 0 ? last_chart_w : 700 + count),
+		(last_chart_w > 0 ? last_chart_w : (count > 700 ? count : 700)),
 		job_start
 }' "$SAMPLES_FILE")
 

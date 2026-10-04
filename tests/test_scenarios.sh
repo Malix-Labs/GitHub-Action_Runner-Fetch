@@ -798,9 +798,13 @@ if ! grep -q 'line "Net RX"' "$IO_CHART" || ! grep -q 'line "Net TX"' "$IO_CHART
 	exit 1
 fi
 
-# Verify canvas width synchronization between charts
+# Verify canvas width synchronization between charts and baseline width of 700
 W_PRIMARY=$(grep -o '"width":[0-9]*' "$PRIMARY_CHART" | head -n 1)
 W_IO=$(grep -o '"width":[0-9]*' "$IO_CHART" | head -n 1)
+if [ "$W_PRIMARY" != '"width":700' ]; then
+	echo "Error: Expected canvas width:700 for <=700 samples, got $W_PRIMARY" >&2
+	exit 1
+fi
 if [ -n "$W_PRIMARY" ] && [ "$W_PRIMARY" != "$W_IO" ]; then
 	echo "Error: Canvas width mismatch between primary chart ($W_PRIMARY) and IO chart ($W_IO)" >&2
 	exit 1
