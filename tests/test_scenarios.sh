@@ -870,4 +870,74 @@ fi
 
 echo "Test 21 PASSED."
 
+echo "=== Test 22: macOS target platform Disk I/O (Read vs. Write) parser ==="
+setup_test "test22"
+export RUNNER_OS="macOS"
+export INPUT_MONITOR_DISK_IO="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+
+MOCK_TOP="Processes: 300 total, 2 running, 298 sleeping, 1200 threads
+2026/10/04 12:00:00
+Load Avg: 1.50, 1.20, 1.05
+CPU usage: 12.5% user, 7.5% sys, 80.0% idle
+SharedLibs: 250M resident, 45M data, 30M linkedit.
+MemRegions: 50000 total, 2500M resident, 100M private, 800M shared.
+PhysMem: 8000M used (2000M wired), 8384M unused.
+VM: 3000G vsize, 2500M framework vsize, 0(0) swapins, 0(0) swapouts.
+Networks: packets: 1000000/500M in, 800000/200M out.
+Disks: 500000/120G read, 300000/45G written.
+"
+
+PARSED_DISK=$(echo "$MOCK_TOP" | awk '
+function to_mb(str,   unit, val) {
+	gsub(/[^0-9A-Za-z.]/, "", str)
+	if (str == "" || str == "0") return 0
+	unit = toupper(substr(str, length(str)))
+	if (unit !~ /[BKMGT]/) return int((str + 0) / 1048576)
+	val = substr(str, 1, length(str) - 1) + 0
+	if (unit == "T") return int(val * 1048576)
+	if (unit == "G") return int(val * 1024)
+	if (unit == "M") return int(val)
+	if (unit == "K") return int(val / 1024)
+	return int(val / 1048576)
+}
+/Disks:/ {
+	split($2, r_arr, "/")
+	split($4, w_arr, "/")
+	printf "%d\t%d\n", to_mb(r_arr[2]), to_mb(w_arr[2])
+}')
+
+if [ "$PARSED_DISK" != "122880	46080" ]; then
+	printf "Error: macOS top Disks awk parser returned '%s', expected '122880\\t46080'\\n" "$PARSED_DISK" >&2
+	exit 1
+fi
+
+# Verify units conversion for M and K as well
+MOCK_TOP_M="Disks: 100/250M read, 200/50M written."
+PARSED_DISK_M=$(echo "$MOCK_TOP_M" | awk '
+function to_mb(str,   unit, val) {
+	gsub(/[^0-9A-Za-z.]/, "", str)
+	if (str == "" || str == "0") return 0
+	unit = toupper(substr(str, length(str)))
+	if (unit !~ /[BKMGT]/) return int((str + 0) / 1048576)
+	val = substr(str, 1, length(str) - 1) + 0
+	if (unit == "T") return int(val * 1048576)
+	if (unit == "G") return int(val * 1024)
+	if (unit == "M") return int(val)
+	if (unit == "K") return int(val / 1024)
+	return int(val / 1048576)
+}
+/Disks:/ {
+	split($2, r_arr, "/")
+	split($4, w_arr, "/")
+	printf "%d\t%d\n", to_mb(r_arr[2]), to_mb(w_arr[2])
+}')
+
+if [ "$PARSED_DISK_M" != "250	50" ]; then
+	printf "Error: macOS top Disks awk parser (M) returned '%s', expected '250\\t50'\\n" "$PARSED_DISK_M" >&2
+	exit 1
+fi
+
+echo "Test 22 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

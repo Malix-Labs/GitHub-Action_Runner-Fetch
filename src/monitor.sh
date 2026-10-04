@@ -83,6 +83,7 @@ while :; do
 	GPU_UTIL=0
 	VRAM_USED_MB=0
 	VRAM_TOTAL_MB=0
+	TOP_OUT=""
 
 	# 1. Target filesystem free disk space (actual workspace mount across all platforms)
 	if [ "$ENABLE_DISK" = "true" ]; then
@@ -166,8 +167,11 @@ while :; do
 				SWAP_USED_MB=$(echo "$SWAP_OUT" | awk -F'used = ' '{split($2, a, "M"); print int(a[1])}' 2>/dev/null || echo 0)
 			fi
 		fi
-		if [ "$ENABLE_CPU" = "true" ]; then
-			CPU_TOTAL=$(top -l 1 -n 0 -F -R 2>/dev/null | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
+		if [ "$ENABLE_CPU" = "true" ] || [ "$ENABLE_DISK_IO" = "true" ]; then
+			TOP_OUT=$(top -l 1 -n 0 -F -R 2>/dev/null || echo "")
+			if [ "$ENABLE_CPU" = "true" ]; then
+				CPU_TOTAL=$(echo "$TOP_OUT" | awk -F'[:,%]' '/CPU usage:/ {print int($2 + $4)}' || echo 0)
+			fi
 		fi
 		;;
 
@@ -218,8 +222,28 @@ EOF
 $DISK_IO_BYTES
 EOF
 		elif [ "$TARGET_OS" = "macOS" ]; then
-			DISK_READ_MB=$(iostat -d -I 2>/dev/null | awk 'NR==2 { for(i=3; i<=NF; i+=3) tot += $i } END { print int(tot) }' || echo 0)
-			DISK_WRITE_MB=0
+			[ -z "${TOP_OUT:-}" ] && TOP_OUT=$(top -l 1 -n 0 -F -R 2>/dev/null || echo "")
+			DISK_IO_BYTES=$(echo "$TOP_OUT" | awk '
+			function to_mb(str,   unit, val) {
+				gsub(/[^0-9A-Za-z.]/, "", str)
+				if (str == "" || str == "0") return 0
+				unit = toupper(substr(str, length(str)))
+				if (unit !~ /[BKMGT]/) return int((str + 0) / 1048576)
+				val = substr(str, 1, length(str) - 1) + 0
+				if (unit == "T") return int(val * 1048576)
+				if (unit == "G") return int(val * 1024)
+				if (unit == "M") return int(val)
+				if (unit == "K") return int(val / 1024)
+				return int(val / 1048576)
+			}
+			/Disks:/ {
+				split($2, r_arr, "/")
+				split($4, w_arr, "/")
+				printf "%d\t%d\n", to_mb(r_arr[2]), to_mb(w_arr[2])
+			}' || echo "0	0")
+			IFS='	' read -r DISK_READ_MB DISK_WRITE_MB <<EOF
+$DISK_IO_BYTES
+EOF
 		fi
 		DISK_READ_MB="${DISK_READ_MB:-0}"
 		DISK_WRITE_MB="${DISK_WRITE_MB:-0}"
