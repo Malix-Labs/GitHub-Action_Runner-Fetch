@@ -104,6 +104,16 @@ outputs:
     description: "Peak GPU core utilization percentage during the job."
   peak_vram_mb:
     description: "Peak GPU VRAM usage in megabytes during the job."
+  summary_table:
+    description: "Markdown table summarizing runner resource baseline, peak, and final metrics."
+  summary_markdown:
+    description: "Complete rendered Markdown telemetry report including tables, duration, and notices."
+  resource_chart_mermaid:
+    description: "Mermaid source code for the Resource Utilization Timeline XY chart."
+  io_chart_mermaid:
+    description: "Mermaid source code for the I/O Throughput Timeline XY chart."
+  gantt_mermaid:
+    description: "Mermaid source code for the Workflow Phases and Milestones Gantt chart."
 
 runs:
   using: "node24"

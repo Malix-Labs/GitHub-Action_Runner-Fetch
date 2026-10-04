@@ -29,7 +29,7 @@ GitHub Action to inspect and continuously monitor GitHub Actions runner VMs.
 steps:
   - name: Fetch & Monitor Runner
     id: fetch
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.0.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
     with:
       monitor-cpu: true
       monitor-memory: true
@@ -59,7 +59,7 @@ You can mark execution phases using `phase-start` and `phase-end`, or pin instan
 steps:
   # Initial step initializes monitoring and starts the Setup phase
   - name: Init Telemetry & Start Setup
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.0.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
     with:
       phase-start: "Setup"
 
@@ -69,14 +69,14 @@ steps:
   # Mark an instantaneous milestone
   - name: Milestone Cache Restored
     id: milestone-cache
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.0.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
     with:
       milestone: "Cache Restored"
 
   # Transition from Setup to Build phase
   - name: End Setup & Start Build
     id: phase-build
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.0.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
     with:
       phase-end: "Setup"
       phase-start: "Build"
@@ -86,7 +86,7 @@ steps:
 
   # Complete Build phase
   - name: End Build
-    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.0.0
+    uses: Malix-Labs/GitHub-Action_Runner-Fetch@v2.1.0
     with:
       phase-end: "Build"
 ```
@@ -141,6 +141,48 @@ steps:
 | `disk_write_mb` | Total disk data written in megabytes during the job |
 | `peak_gpu_percent` | Peak GPU core utilization percentage during the job |
 | `peak_vram_mb` | Peak GPU VRAM usage in megabytes during the job |
+| `summary_table` | Markdown table summarizing runner resource baseline, peak, and final metrics |
+| `summary_markdown` | Complete rendered Markdown telemetry report including tables, duration, and notices |
+| `resource_chart_mermaid` | Mermaid source code for the Resource Utilization Timeline XY chart |
+| `io_chart_mermaid` | Mermaid source code for the I/O Throughput Timeline XY chart |
+| `gantt_mermaid` | Mermaid source code for the Workflow Phases and Milestones Gantt chart |
+
+## Accessing Telemetry Data
+
+### In-Workflow Consumption
+
+Downstream steps in the same job can read discrete Markdown tables, full Markdown reports, or Mermaid diagram strings directly from step outputs:
+
+```yaml
+- name: Post Performance Comment to Pull Request
+  if: always()
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const table = `${{ steps.fetch.outputs.summary_table }}`;
+      const chart = `${{ steps.fetch.outputs.resource_chart_mermaid }}`;
+      github.rest.issues.createComment({
+        issue_number: context.issue.number,
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        body: `### Runner Telemetry\n\n${table}\n\n${chart}`
+      });
+```
+
+### Asynchronous CLI and API Access
+
+The action emits structured log groups to stdout, allowing automated tools and the GitHub CLI to extract the Markdown table or Mermaid diagrams directly from job logs after the workflow completes, without downloading zip artifacts:
+
+```bash
+# Extract the Markdown table
+gh run view <run-id> --log | awk '/::group::runner_fetch_summary_table/{f=1;next} /::endgroup::/{f=0} f' > table.md
+
+# Extract the Resource Utilization Timeline Mermaid diagram
+gh run view <run-id> --log | awk '/::group::runner_fetch_resource_chart_mermaid/{f=1;next} /::endgroup::/{f=0} f' > resource_chart.mmd
+
+# Extract the complete rendered Markdown report
+gh run view <run-id> --log | awk '/::group::runner_fetch_summary_markdown/{f=1;next} /::endgroup::/{f=0} f' > report.md
+```
 
 ## Why is Node 24 used instead of a pure composite action?
 

@@ -1036,4 +1036,57 @@ if (!summary.oom_detected) {
 
 echo "Test 23 PASSED."
 
+echo "=== Test 24: Discrete action outputs (table, markdown, mermaid) and structured log grouping ==="
+setup_test "test24"
+export GITHUB_ACTIONS="true"
+export INPUT_MONITOR_DISK_IO="true"
+export INPUT_PHASE_START="Build"
+mkdir -p "$RUN_DIR/runner-fetch"
+printf "START\t%d\tBuild\n" "$(($(date +%s) - 10))" >|"$RUN_DIR/runner-fetch/phases.tsv"
+printf "SUMMARY\tBuild\t10\t4000\t50\t200\t%d\t%d\n" "$(($(date +%s) - 10))" "$(date +%s)" >>"$RUN_DIR/runner-fetch/phases.tsv"
+printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\tswap_used_mb\tswap_total_mb\tnet_rx_mb\tnet_tx_mb\tdisk_read_mb\tdisk_write_mb\tgpu_util_pct\tgpu_vram_used_mb\tgpu_vram_total_mb\n" >|"$RUN_DIR/runner-fetch/samples.tsv"
+printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\t0\t0\t0\t0\t100\t50\t0\t0\t0\n" >>"$RUN_DIR/runner-fetch/samples.tsv"
+printf "1789000002\t20\t10\t0\t0\t30\t2500\t5500\t49800\t0\t0\t0\t0\t0\t200\t150\t0\t0\t0\n" >>"$RUN_DIR/runner-fetch/samples.tsv"
+
+STDOUT_LOG="$RUN_DIR/stdout.log"
+(cd "$REPO_ROOT" && node src/post.js) >|"$STDOUT_LOG"
+
+EXTRACTED_TABLE=$(awk '/::group::runner_fetch_summary_table/{f=1;next} /::endgroup::/{f=0} f' "$STDOUT_LOG")
+if [ -z "$EXTRACTED_TABLE" ] || ! echo "$EXTRACTED_TABLE" | grep -q "CPU Utilization"; then
+	echo "Error: runner_fetch_summary_table group missing or empty in stdout" >&2
+	cat "$STDOUT_LOG" >&2
+	exit 1
+fi
+
+EXTRACTED_CHART=$(awk '/::group::runner_fetch_resource_chart_mermaid/{f=1;next} /::endgroup::/{f=0} f' "$STDOUT_LOG")
+if [ -z "$EXTRACTED_CHART" ] || ! echo "$EXTRACTED_CHART" | grep -q "Resource Utilization Timeline"; then
+	echo "Error: runner_fetch_resource_chart_mermaid group missing or empty in stdout" >&2
+	cat "$STDOUT_LOG" >&2
+	exit 1
+fi
+
+EXTRACTED_IO=$(awk '/::group::runner_fetch_io_chart_mermaid/{f=1;next} /::endgroup::/{f=0} f' "$STDOUT_LOG")
+if [ -z "$EXTRACTED_IO" ] || ! echo "$EXTRACTED_IO" | grep -q "I/O Throughput Timeline"; then
+	echo "Error: runner_fetch_io_chart_mermaid group missing or empty in stdout" >&2
+	cat "$STDOUT_LOG" >&2
+	exit 1
+fi
+
+EXTRACTED_GANTT=$(awk '/::group::runner_fetch_gantt_mermaid/{f=1;next} /::endgroup::/{f=0} f' "$STDOUT_LOG")
+if [ -z "$EXTRACTED_GANTT" ] || ! echo "$EXTRACTED_GANTT" | grep -q "gantt"; then
+	echo "Error: runner_fetch_gantt_mermaid group missing or empty in stdout" >&2
+	cat "$STDOUT_LOG" >&2
+	exit 1
+fi
+
+for out_key in summary_table summary_markdown resource_chart_mermaid io_chart_mermaid gantt_mermaid; do
+	if ! grep -q "^${out_key}<<EOF" "$GITHUB_OUTPUT"; then
+		echo "Error: Multiline output '$out_key' missing in GITHUB_OUTPUT" >&2
+		cat "$GITHUB_OUTPUT" >&2
+		exit 1
+	fi
+done
+
+echo "Test 24 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

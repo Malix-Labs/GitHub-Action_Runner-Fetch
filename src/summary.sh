@@ -1059,83 +1059,150 @@ SUMMARY_JSON=$(printf '{"duration_seconds":%d,"job_offset_seconds":%d,"samples_c
 
 echo "$SUMMARY_JSON" >|"$SUMMARY_FILE"
 
-# 7. Write to $GITHUB_STEP_SUMMARY
+# 7. Generate Summary Markdown & Structured Log Groups
+SUMMARY_TABLE="| Metric | Baseline / Min | Peak / Max | Final / Avg | Trend |
+| :--- | :--- | :--- | :--- | :--- |"
+[ "$ENABLE_CPU" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **CPU Utilization** | - | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
+[ "$ENABLE_MEM" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
+[ "$ENABLE_SWAP" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Swap Usage** | ${SWAP_INIT_MB} MB | **${SWAP_PEAK_MB} MB** | ${SWAP_FINAL_MB} MB / ${SWAP_TOTAL_MB} MB | \`${SWAP_SPARKLINE}\` |"
+[ "$ENABLE_NET" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Network I/O** | - | RX: **${NET_RX_MB} MB** | TX: **${NET_TX_MB} MB** | \`${NET_SPARKLINE}\` |"
+[ "$ENABLE_DISK_IO" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Disk I/O** | - | Read: **${DISK_READ_MB} MB** | Write: **${DISK_WRITE_MB} MB** | \`${DISK_IO_SPARKLINE}\` |"
+[ "$ENABLE_GPU" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **GPU Utilization** | - | **${GPU_PEAK}%** | Avg: **${GPU_AVG}%** | \`${GPU_SPARKLINE}\` |"
+[ "$ENABLE_GPU" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **GPU VRAM** | - | **${VRAM_PEAK_MB} MB** | Total: ${VRAM_TOTAL_MB} MB | \`${VRAM_SPARKLINE}\` |"
+if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
+	if [ "$ENABLE_DISK" = "true" ]; then
+		SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
+	else
+		SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Disk Storage Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | - | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
+	fi
+elif [ "$ENABLE_DISK" = "true" ]; then
+	SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Disk Consumed** | - | Net: **${DISK_CONSUMED_MB} MB** | - | - |"
+fi
+[ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && SUMMARY_TABLE="${SUMMARY_TABLE}
+| **CPU Steal (Contention)** | - | **${CPU_STEAL_MAX}%** | Hypervisor throttling detected | - |"
+
+SUMMARY_MARKDOWN="## Runner Telemetry & Resource Summary
+"
+if [ "$OOM_DETECTED" = "true" ]; then
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+> [!CAUTION]"
+	case "$TARGET_OS" in
+	"Windows")
+		SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+> **Resource Exhaustion / Out-Of-Memory Detected!**
+> The Windows operating system detected a critical low virtual memory condition."
+		;;
+	"macOS")
+		SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+> **Out-Of-Memory (Jetsam) Kill Detected!**
+> The macOS kernel terminated one or more processes due to memory exhaustion."
+		;;
+	*)
+		SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+> **Out-Of-Memory (OOM) Kill Detected!**
+> The Linux kernel terminated one or more processes due to memory exhaustion."
+		;;
+	esac
+	[ -n "$OOM_DETAILS" ] && SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+> Details: \`${OOM_DETAILS}\`"
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+"
+fi
+
+SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+${SUMMARY_TABLE}
+"
+
+if [ -n "$PHASE_TABLE_ROWS" ]; then
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+### Phase Breakdown
+
+| Phase / Milestone | Duration / Offset | Peak RAM | Avg CPU | Disk Consumed / Free |
+| :--- | :--- | :--- | :--- | :--- |
+${PHASE_TABLE_ROWS}
+| **Total Job** | ${DURATION_SEC}s | ${MEM_PEAK_MB} MB | ${CPU_AVG}% | ${DISK_CONSUMED_MB} MB |
+"
+fi
+
+GANTT_CONTENT=""
+[ -s "$GANTT_FILE" ] && GANTT_CONTENT=$(cat "$GANTT_FILE")
+if [ -n "$GANTT_CONTENT" ]; then
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+${GANTT_CONTENT}
+"
+fi
+
+CHART_CONTENT=""
+[ -s "$CHART_FILE" ] && CHART_CONTENT=$(cat "$CHART_FILE")
+if [ -n "$CHART_CONTENT" ]; then
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+### Resource Utilization Timeline
+
+${CHART_CONTENT}
+"
+fi
+
+IO_CHART_CONTENT=""
+[ -s "$IO_CHART_FILE" ] && IO_CHART_CONTENT=$(cat "$IO_CHART_FILE")
+if [ -n "$IO_CHART_CONTENT" ]; then
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+### I/O Throughput Timeline
+
+${IO_CHART_CONTENT}
+"
+fi
+
+HUMAN_DUR=$(printf "%02d:%02d:%02d:%02d" "$((DURATION_SEC / 86400))" "$(((DURATION_SEC % 86400) / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")
+if [ "$JOB_OFFSET_SEC" -gt 0 ]; then
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+*Duration: ${HUMAN_DUR} (${DURATION_SEC}s, ${SAMPLE_COUNT} samples, started +${JOB_OFFSET_SEC}s after job start)*
+"
+else
+	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+*Duration: ${HUMAN_DUR} (${DURATION_SEC}s, ${SAMPLE_COUNT} samples)*
+"
+fi
+
+# Write to $GITHUB_STEP_SUMMARY
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-	{
-		echo "## Runner Telemetry & Resource Summary"
-		echo ""
-		if [ "$OOM_DETECTED" = "true" ]; then
-			echo "> [!CAUTION]"
-			case "$TARGET_OS" in
-			"Windows")
-				echo "> **Resource Exhaustion / Out-Of-Memory Detected!**"
-				echo "> The Windows operating system detected a critical low virtual memory condition."
-				;;
-			"macOS")
-				echo "> **Out-Of-Memory (Jetsam) Kill Detected!**"
-				echo "> The macOS kernel terminated one or more processes due to memory exhaustion."
-				;;
-			*)
-				echo "> **Out-Of-Memory (OOM) Kill Detected!**"
-				echo "> The Linux kernel terminated one or more processes due to memory exhaustion."
-				;;
-			esac
-			[ -n "$OOM_DETAILS" ] && echo "> Details: \`${OOM_DETAILS}\`"
-			echo ""
-		fi
-		echo "| Metric | Baseline / Min | Peak / Max | Final / Avg | Trend |"
-		echo "| :--- | :--- | :--- | :--- | :--- |"
-		[ "$ENABLE_CPU" = "true" ] && echo "| **CPU Utilization** | - | **${CPU_PEAK}%** | Avg: **${CPU_AVG}%** | \`${CPU_SPARKLINE}\` |"
-		[ "$ENABLE_MEM" = "true" ] && echo "| **Memory Usage** | ${MEM_INIT_MB} MB | **${MEM_PEAK_MB} MB** (${MEM_PEAK_PCT}%) | ${MEM_FINAL_MB} MB / ${MEM_TOTAL_MB} MB | \`${MEM_SPARKLINE}\` |"
-		[ "$ENABLE_SWAP" = "true" ] && echo "| **Swap Usage** | ${SWAP_INIT_MB} MB | **${SWAP_PEAK_MB} MB** | ${SWAP_FINAL_MB} MB / ${SWAP_TOTAL_MB} MB | \`${SWAP_SPARKLINE}\` |"
-		[ "$ENABLE_NET" = "true" ] && echo "| **Network I/O** | - | RX: **${NET_RX_MB} MB** | TX: **${NET_TX_MB} MB** | \`${NET_SPARKLINE}\` |"
-		[ "$ENABLE_DISK_IO" = "true" ] && echo "| **Disk I/O** | - | Read: **${DISK_READ_MB} MB** | Write: **${DISK_WRITE_MB} MB** | \`${DISK_IO_SPARKLINE}\` |"
-		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU Utilization** | - | **${GPU_PEAK}%** | Avg: **${GPU_AVG}%** | \`${GPU_SPARKLINE}\` |"
-		[ "$ENABLE_GPU" = "true" ] && echo "| **GPU VRAM** | - | **${VRAM_PEAK_MB} MB** | Total: ${VRAM_TOTAL_MB} MB | \`${VRAM_SPARKLINE}\` |"
-		if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
-			if [ "$ENABLE_DISK" = "true" ]; then
-				echo "| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
-			else
-				echo "| **Disk Storage Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | - | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
-			fi
-		elif [ "$ENABLE_DISK" = "true" ]; then
-			echo "| **Disk Consumed** | - | Net: **${DISK_CONSUMED_MB} MB** | - | - |"
-		fi
-		[ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && echo "| **CPU Steal (Contention)** | - | **${CPU_STEAL_MAX}%** | Hypervisor throttling detected | - |"
-		echo ""
-		if [ -n "$PHASE_TABLE_ROWS" ]; then
-			echo "### Phase Breakdown"
-			echo ""
-			echo "| Phase / Milestone | Duration / Offset | Peak RAM | Avg CPU | Disk Consumed / Free |"
-			echo "| :--- | :--- | :--- | :--- | :--- |"
-			echo "$PHASE_TABLE_ROWS"
-			echo "| **Total Job** | ${DURATION_SEC}s | ${MEM_PEAK_MB} MB | ${CPU_AVG}% | ${DISK_CONSUMED_MB} MB |"
-			echo ""
-		fi
-		if [ -s "$GANTT_FILE" ]; then
-			cat "$GANTT_FILE"
-			echo ""
-		fi
-		if [ -s "$CHART_FILE" ]; then
-			echo "### Resource Utilization Timeline"
-			echo ""
-			cat "$CHART_FILE"
-			echo ""
-		fi
-		if [ -s "$IO_CHART_FILE" ]; then
-			echo "### I/O Throughput Timeline"
-			echo ""
-			cat "$IO_CHART_FILE"
-			echo ""
-		fi
-		HUMAN_DUR=$(printf "%02d:%02d:%02d:%02d" "$((DURATION_SEC / 86400))" "$(((DURATION_SEC % 86400) / 3600))" "$(((DURATION_SEC % 3600) / 60))" "$((DURATION_SEC % 60))")
-		if [ "$JOB_OFFSET_SEC" -gt 0 ]; then
-			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s, ${SAMPLE_COUNT} samples, started +${JOB_OFFSET_SEC}s after job start)*"
-		else
-			echo "*Duration: ${HUMAN_DUR} (${DURATION_SEC}s, ${SAMPLE_COUNT} samples)*"
-		fi
-		echo ""
-	} >>"$GITHUB_STEP_SUMMARY"
+	printf '%s\n' "$SUMMARY_MARKDOWN" >>"$GITHUB_STEP_SUMMARY"
+fi
+
+# Emit structured log groups to stdout for CI log inspection
+echo "::group::runner_fetch_summary_table"
+printf '%s\n' "$SUMMARY_TABLE"
+echo "::endgroup::"
+
+echo "::group::runner_fetch_summary_markdown"
+printf '%s\n' "$SUMMARY_MARKDOWN"
+echo "::endgroup::"
+
+if [ -n "$CHART_CONTENT" ]; then
+	echo "::group::runner_fetch_resource_chart_mermaid"
+	printf '%s\n' "$CHART_CONTENT"
+	echo "::endgroup::"
+fi
+
+if [ -n "$IO_CHART_CONTENT" ]; then
+	echo "::group::runner_fetch_io_chart_mermaid"
+	printf '%s\n' "$IO_CHART_CONTENT"
+	echo "::endgroup::"
+fi
+
+if [ -n "$GANTT_CONTENT" ]; then
+	echo "::group::runner_fetch_gantt_mermaid"
+	printf '%s\n' "$GANTT_CONTENT"
+	echo "::endgroup::"
 fi
 
 # 8. Set Action Outputs
@@ -1153,5 +1220,18 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
 		printf "peak_vram_mb=%s\n" "$VRAM_PEAK_MB"
 		printf "oom_detected=%s\n" "$OOM_DETECTED"
 		printf 'summary<<EOF_SUMMARY\n%s\nEOF_SUMMARY\n' "$SUMMARY_JSON"
+		printf 'summary_table<<EOF_TABLE\n%s\nEOF_TABLE\n' "$SUMMARY_TABLE"
+		printf 'summary_markdown<<EOF_MARKDOWN\n%s\nEOF_MARKDOWN\n' "$SUMMARY_MARKDOWN"
+		if [ -n "$CHART_CONTENT" ]; then
+			printf 'resource_chart_mermaid<<EOF_RESOURCE_CHART\n%s\nEOF_RESOURCE_CHART\n' "$CHART_CONTENT"
+		fi
+		if [ -n "$IO_CHART_CONTENT" ]; then
+			printf 'io_chart_mermaid<<EOF_IO_CHART\n%s\nEOF_IO_CHART\n' "$IO_CHART_CONTENT"
+		fi
+		if [ -n "$GANTT_CONTENT" ]; then
+			printf 'gantt_mermaid<<EOF_GANTT\n%s\nEOF_GANTT\n' "$GANTT_CONTENT"
+		fi
 	} >>"$GITHUB_OUTPUT"
 fi
+
+exit 0
