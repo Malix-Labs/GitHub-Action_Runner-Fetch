@@ -1,7 +1,7 @@
 #!/bin/sh
 set -euC
 
-OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
+OUT_DIR="${RUNNER_FETCH_DIR:-${RUNNER_TEMP:-/tmp}/runner-fetch}"
 mkdir -p "$OUT_DIR"
 PHASES_FILE="${OUT_DIR}/phases.tsv"
 SAMPLES_FILE="${OUT_DIR}/samples.tsv"

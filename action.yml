@@ -46,6 +46,9 @@ inputs:
   milestone:
     description: "Record an instantaneous workflow milestone or point event."
     default: ""
+  scope-level:
+    description: "Monitoring scope level: 0 (default: whole-job until completion), 1-10 (scoped to nesting level of action/step)."
+    default: "0" # https://docs.github.com/en/actions/sharing-automations/creating-actions/creating-a-composite-action
 
 outputs:
   environment:

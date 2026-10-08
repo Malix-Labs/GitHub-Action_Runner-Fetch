@@ -1089,4 +1089,55 @@ done
 
 echo "Test 24 PASSED."
 
+echo "=== Test 25: Step-scoped monitoring (scope-level >= 1) with immediate summary ==="
+TEST25_DIR=$(mktemp -d)
+export RUNNER_TEMP="$TEST25_DIR"
+export INPUT_SCOPE_LEVEL="1"
+export INPUT_MONITOR_CPU="true"
+export INPUT_MONITOR_MEMORY="true"
+export INPUT_SAMPLE_INTERVAL="1"
+export GITHUB_OUTPUT="${TEST25_DIR}/output.txt"
+export GITHUB_STATE="${TEST25_DIR}/state.txt"
+export GITHUB_STEP_SUMMARY="${TEST25_DIR}/summary.md"
+touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
+
+# Step 1: Initialize scoped phase
+export INPUT_PHASE_START="ScopedPhase"
+export INPUT_PHASE_END=""
+node src/main.js
+
+# Verify scoped directory was created and is_primary_init was NOT written to GITHUB_STATE
+SCOPED_OUT_DIR="${TEST25_DIR}/runner-fetch-scope-1"
+if [ ! -d "$SCOPED_OUT_DIR" ]; then
+	echo "Error: Scoped directory $SCOPED_OUT_DIR was not created" >&2
+	exit 1
+fi
+if grep -q "is_primary_init=true" "$GITHUB_STATE"; then
+	echo "Error: is_primary_init should not be set for scoped-level >= 1" >&2
+	exit 1
+fi
+
+sleep 1
+
+# Step 2: Conclude scoped phase
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END="ScopedPhase"
+node src/main.js
+
+# Verify summary was immediately rendered in GITHUB_STEP_SUMMARY
+if [ ! -s "$GITHUB_STEP_SUMMARY" ]; then
+	echo "Error: GITHUB_STEP_SUMMARY is empty; immediate summary was not triggered" >&2
+	exit 1
+fi
+if ! grep -q "ScopedPhase" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: ScopedPhase missing in immediate GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+# Verify post.js exits cleanly in 0ms without re-running
+node src/post.js
+rm -rf "$TEST25_DIR"
+
+echo "Test 25 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

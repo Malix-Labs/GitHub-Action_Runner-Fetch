@@ -13,6 +13,7 @@ GitHub Action to inspect and continuously monitor GitHub Actions runner VMs.
 ## Features & Highlights
 
 - **Multi-Call Phase Tracking & Milestone Profiling**: Mark execution phases using `phase-start` / `phase-end` or pin instantaneous point events using `milestone`. The action automatically aggregates per-phase metrics, captures telemetry snapshots at milestones, and outputs a consolidated comparison table in `$GITHUB_STEP_SUMMARY`.
+- **Step-Scoped & Nested Action Monitoring (`scope-level`)**: Supports scoped monitoring isolated to a specific step or composite action nesting level (`1`-`10`), immediately generating the phase summary and stopping the monitor at phase completion without waiting for whole-job `post:` hooks.
 - **Synchronized Companion Gantt Chart**: Generates an aligned Mermaid Gantt chart placed alongside the resource timeline, rendering phases as duration intervals and milestones as markers with matched dynamic canvas widths.
 - **Automated Runner Start-Time Alignment**: Auto-detects runner initialization time from the environment, automatically offsetting the Mermaid timeline X-axis (e.g. `45s --> 120s`) when the action is called late in a workflow run.
 - **Storage Baseline & Pre-installed Bloat Reporting**: Automatically captures initial disk partition capacity, pre-installed software bloat, and net consumption in `$GITHUB_STEP_SUMMARY`.
@@ -107,6 +108,7 @@ steps:
 | `phase-start` | Mark the beginning of a named execution phase | `""` |
 | `phase-end` | Mark the completion of a named execution phase | `""` |
 | `milestone` | Record an instantaneous workflow milestone or point event | `""` |
+| `scope-level` | Monitoring scope level: `0` (whole-job default), `1`-`10` (scoped to action/step nesting level) | `0` |
 | `disk-tree` | Build recursive directory tree via `dust` | `true` |
 
 ## Outputs

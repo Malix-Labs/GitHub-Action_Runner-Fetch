@@ -3,11 +3,16 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const outDir = path.join(process.env.RUNNER_TEMP || '/tmp', 'runner-fetch');
+const scopeLevel = Number.parseInt(process.env.INPUT_SCOPE_LEVEL || '0', 10) || 0;
+const dirSuffix = scopeLevel > 0 ? `runner-fetch-scope-${scopeLevel}` : 'runner-fetch';
+const outDir = path.join(process.env.RUNNER_TEMP || '/tmp', dirSuffix);
+process.env.RUNNER_FETCH_DIR = outDir;
+
 const pidFile = path.join(outDir, 'monitor.pid');
 const monitorScript = path.join(import.meta.dirname, 'monitor.sh');
 const fetchScript = path.join(import.meta.dirname, 'fetch.sh');
 const phaseScript = path.join(import.meta.dirname, 'phase.sh');
+const summaryScript = path.join(import.meta.dirname, 'summary.sh');
 
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -29,12 +34,26 @@ if (isAlreadyInitialized && isPhaseStep) {
     console.error('Failed to run phase.sh:', result.error);
     process.exit(1);
   }
+
+  // If this is a scoped action completing its phase, trigger summary and teardown immediately
+  if (scopeLevel >= 1 && process.env.INPUT_PHASE_END && process.env.INPUT_PHASE_END.trim()) {
+    const summaryResult = spawnSync('sh', [summaryScript], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+    if (summaryResult.error) {
+      console.error('Failed to run summary.sh:', summaryResult.error);
+      process.exit(1);
+    }
+    process.exit(summaryResult.status !== null ? summaryResult.status : 0);
+  }
+
   process.exit(result.status !== null ? result.status : 0);
 }
 
-// Mark this invocation as the primary initialization step
+// Mark this invocation as the initialization step for this scope
 fs.writeFileSync(initDoneFile, String(process.pid), 'utf8');
-if (process.env.GITHUB_STATE) {
+if (scopeLevel === 0 && process.env.GITHUB_STATE) {
   try {
     fs.appendFileSync(process.env.GITHUB_STATE, 'is_primary_init=true\n');
   } catch (err) {

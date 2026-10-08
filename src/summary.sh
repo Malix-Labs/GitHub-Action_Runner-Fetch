@@ -1,7 +1,7 @@
 #!/bin/sh
 set -euC
 
-OUT_DIR="${RUNNER_TEMP:-/tmp}/runner-fetch"
+OUT_DIR="${RUNNER_FETCH_DIR:-${RUNNER_TEMP:-/tmp}/runner-fetch}"
 PID_FILE="${OUT_DIR}/monitor.pid"
 SAMPLES_FILE="${OUT_DIR}/samples.tsv"
 SUMMARY_FILE="${OUT_DIR}/summary.json"
