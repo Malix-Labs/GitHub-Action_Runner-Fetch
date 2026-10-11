@@ -1151,13 +1151,19 @@ export INPUT_PHASE_START=""
 export INPUT_PHASE_END="ScopedPhase"
 node src/main.js
 
-# Verify summary was immediately rendered in GITHUB_STEP_SUMMARY
+# Verify summary was immediately rendered in GITHUB_STEP_SUMMARY inside a collapsible details block
 if [ ! -s "$GITHUB_STEP_SUMMARY" ]; then
 	echo "Error: GITHUB_STEP_SUMMARY is empty; immediate summary was not triggered" >&2
 	exit 1
 fi
-if ! grep -q "ScopedPhase" "$GITHUB_STEP_SUMMARY"; then
-	echo "Error: ScopedPhase missing in immediate GITHUB_STEP_SUMMARY" >&2
+if ! grep -q "<details>" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: Expected collapsible <details> tag missing in scoped GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+if ! grep -q "Runner Telemetry: Phase 'ScopedPhase'" "$GITHUB_STEP_SUMMARY"; then
+	echo "Error: ScopedPhase summary title missing in immediate GITHUB_STEP_SUMMARY" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
 	exit 1
 fi
 
@@ -1166,5 +1172,105 @@ node src/post.js
 rm -rf "$TEST25_DIR"
 
 echo "Test 25 PASSED."
+
+echo "=== Test 26: Sibling phases running at identical depth in separate directories ==="
+TEST26_DIR=$(mktemp -d)
+export RUNNER_TEMP="$TEST26_DIR"
+export INPUT_MONITOR_CPU="true"
+export INPUT_MONITOR_MEMORY="true"
+export INPUT_SAMPLE_INTERVAL="1"
+export GITHUB_OUTPUT="${TEST26_DIR}/output.txt"
+export GITHUB_STATE="${TEST26_DIR}/state.txt"
+export GITHUB_STEP_SUMMARY="${TEST26_DIR}/summary.md"
+touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
+
+# Sibling Phase A
+export INPUT_PHASE_START="SubActionA"
+export INPUT_PHASE_END=""
+node src/main.js
+
+# Sibling Phase B
+export INPUT_PHASE_START="SubActionB"
+export INPUT_PHASE_END=""
+node src/main.js
+
+DIR_A="${TEST26_DIR}/runner-fetch/scopes/subactiona"
+DIR_B="${TEST26_DIR}/runner-fetch/scopes/subactionb"
+
+if [ ! -d "$DIR_A" ] || [ ! -d "$DIR_B" ]; then
+	echo "Error: Sibling directories not isolated properly ($DIR_A, $DIR_B)" >&2
+	exit 1
+fi
+
+rm -rf "$TEST26_DIR"
+echo "Test 26 PASSED."
+
+echo "=== Test 27: Root Gantt chart includes phases recorded from nested sub-scopes ==="
+TEST27_DIR=$(mktemp -d)
+export RUNNER_TEMP="$TEST27_DIR"
+export INPUT_MONITOR_CPU="true"
+export INPUT_MONITOR_MEMORY="true"
+export INPUT_SAMPLE_INTERVAL="1"
+export GITHUB_OUTPUT="${TEST27_DIR}/output.txt"
+export GITHUB_STATE="${TEST27_DIR}/state.txt"
+export GITHUB_STEP_SUMMARY="${TEST27_DIR}/summary.md"
+touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
+
+# Step 1: Root initialization
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END=""
+export INPUT_MILESTONE=""
+node src/main.js
+
+# Step 2: Nested Sub-Action phase start & end
+export INPUT_PHASE_START="NestedTask"
+node src/main.js
+sleep 1
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END="NestedTask"
+node src/main.js
+
+# Step 3: Root post.js execution
+export STATE_is_primary_init="true"
+node src/post.js
+
+if ! grep -q "NestedTask : active" "${TEST27_DIR}/runner-fetch/gantt.mermaid"; then
+	echo "Error: NestedTask missing in root gantt.mermaid" >&2
+	cat "${TEST27_DIR}/runner-fetch/gantt.mermaid" >&2
+	exit 1
+fi
+
+rm -rf "$TEST27_DIR"
+echo "Test 27 PASSED."
+
+echo "=== Test 28: enable-summary: false suppresses Step Summary write while preserving outputs ==="
+setup_test "test28"
+export INPUT_ENABLE_SUMMARY="false"
+export GITHUB_OUTPUT="$RUN_DIR/output.txt"
+export GITHUB_STEP_SUMMARY="$RUN_DIR/summary.md"
+: >|"$GITHUB_OUTPUT"
+: >|"$GITHUB_STEP_SUMMARY"
+
+mkdir -p "$RUN_DIR/runner-fetch"
+printf "epoch\tcpu_user\tcpu_system\tcpu_steal\tcpu_iowait\tcpu_total\tmem_used_mb\tmem_avail_mb\tdisk_free_mb\toom_kills\n" >|"$RUN_DIR/runner-fetch/samples.tsv"
+printf "1789000000\t10\t10\t0\t0\t20\t2000\t6000\t50000\t0\n" >>"$RUN_DIR/runner-fetch/samples.tsv"
+printf "1789000002\t15\t15\t0\t0\t30\t2500\t5500\t50000\t0\n" >>"$RUN_DIR/runner-fetch/samples.tsv"
+
+export STATE_is_primary_init="true"
+(cd "$REPO_ROOT" && node src/post.js)
+
+if [ -s "$GITHUB_STEP_SUMMARY" ]; then
+	echo "Error: GITHUB_STEP_SUMMARY was written when enable-summary was false" >&2
+	cat "$GITHUB_STEP_SUMMARY" >&2
+	exit 1
+fi
+
+if ! grep -q "peak_memory_mb=2500" "$GITHUB_OUTPUT"; then
+	echo "Error: GITHUB_OUTPUT missing peak_memory_mb when enable-summary was false" >&2
+	cat "$GITHUB_OUTPUT" >&2
+	exit 1
+fi
+
+echo "Test 28 PASSED."
 
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="
