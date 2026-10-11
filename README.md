@@ -104,6 +104,7 @@ steps:
 | `monitor-gpu` | Monitor GPU utilization and VRAM (optional boolean; auto-detects `nvidia-smi` if omitted) | `""` |
 | `sample-interval` | Telemetry sampling interval in seconds | `2` |
 | `export-prometheus` | Generate standard OpenMetrics / Prometheus (`metrics.prom`) | `true` |
+| `enable-summary` | Write detailed telemetry markdown to GitHub Actions Step Summary (`$GITHUB_STEP_SUMMARY`) | `true` |
 | `phase-start` | Mark the beginning of a named execution phase | `""` |
 | `phase-end` | Mark the completion of a named execution phase | `""` |
 | `milestone` | Record an instantaneous workflow milestone or point event | `""` |

@@ -2,6 +2,7 @@
 set -euC
 
 OUT_DIR="${RUNNER_FETCH_DIR:-${RUNNER_TEMP:-/tmp}/runner-fetch}"
+ROOT_DIR="${RUNNER_FETCH_ROOT_DIR:-${RUNNER_TEMP:-/tmp}/runner-fetch}"
 PID_FILE="${OUT_DIR}/monitor.pid"
 SAMPLES_FILE="${OUT_DIR}/samples.tsv"
 SUMMARY_FILE="${OUT_DIR}/summary.json"
@@ -9,6 +10,13 @@ PROM_FILE="${OUT_DIR}/metrics.prom"
 CHART_FILE="${OUT_DIR}/chart.mermaid"
 IO_CHART_FILE="${OUT_DIR}/io_chart.mermaid"
 GANTT_FILE="${OUT_DIR}/gantt.mermaid"
+
+IS_SCOPED="false"
+SCOPE_NAME=""
+if [ "$OUT_DIR" != "$ROOT_DIR" ]; then
+	IS_SCOPED="true"
+	SCOPE_NAME="${INPUT_PHASE_END:-${INPUT_PHASE_START:-$(basename "$OUT_DIR")}}"
+fi
 
 # 1. Stop background monitor daemon if running
 if [ -f "$PID_FILE" ]; then
@@ -1196,8 +1204,20 @@ else
 "
 fi
 
-# Write to $GITHUB_STEP_SUMMARY
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+# If this is a scoped sub-action summary, wrap the markdown in a collapsible details block
+if [ "$IS_SCOPED" = "true" ]; then
+	SUMMARY_TITLE="📊 Runner Telemetry: Phase '${SCOPE_NAME}' (${HUMAN_DUR}, Peak RAM: ${MEM_PEAK_MB} MB, Avg CPU: ${CPU_AVG}%)"
+	SUMMARY_MARKDOWN="<details>
+<summary><b>${SUMMARY_TITLE}</b></summary>
+
+${SUMMARY_MARKDOWN}
+</details>
+"
+fi
+
+# Write to $GITHUB_STEP_SUMMARY only if enable-summary is not false
+ENABLE_SUMMARY="${INPUT_ENABLE_SUMMARY:-true}"
+if [ "$ENABLE_SUMMARY" != "false" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 	printf '%s\n' "$SUMMARY_MARKDOWN" >>"$GITHUB_STEP_SUMMARY"
 fi
 

@@ -37,6 +37,9 @@ inputs:
   export-prometheus:
     description: "Generate standard OpenMetrics / Prometheus (.prom) metrics file."
     default: "true"
+  enable-summary:
+    description: "Write detailed telemetry markdown to GitHub Actions Step Summary ($GITHUB_STEP_SUMMARY)."
+    default: "true"
   phase-start:
     description: "Mark the beginning of a named execution phase."
     default: ""
