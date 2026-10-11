@@ -1275,4 +1275,89 @@ fi
 
 echo "Test 28 PASSED."
 
+echo "=== Test 29: Multi-level hierarchical tree nesting (top + 2 nested + 2 sub-nested) ==="
+TEST29_DIR=$(mktemp -d)
+export RUNNER_TEMP="$TEST29_DIR"
+export INPUT_ENABLE_SUMMARY="true"
+export INPUT_MONITOR_CPU="true"
+export INPUT_MONITOR_MEMORY="true"
+export INPUT_SAMPLE_INTERVAL="1"
+export GITHUB_OUTPUT="${TEST29_DIR}/output.txt"
+export GITHUB_STATE="${TEST29_DIR}/state.txt"
+export GITHUB_STEP_SUMMARY="${TEST29_DIR}/summary.md"
+touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
+
+# Level 0: Top-level init
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END=""
+export INPUT_MILESTONE=""
+node src/main.js
+
+# Level 1: Nested Action 1
+export INPUT_PHASE_START="Action1"
+node src/main.js
+
+# Level 2: Sub-Action 1.1
+export INPUT_PHASE_START="Sub1.1"
+node src/main.js
+sleep 1
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END="Sub1.1"
+node src/main.js
+
+# Level 2: Sub-Action 1.2
+export INPUT_PHASE_START="Sub1.2"
+node src/main.js
+sleep 1
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END="Sub1.2"
+node src/main.js
+
+# Level 1: End Action 1
+export INPUT_PHASE_START=""
+export INPUT_PHASE_END="Action1"
+node src/main.js
+
+# Level 0: Root post.js
+export STATE_is_primary_init="true"
+node src/post.js
+
+# Verify Action1 encloses Sub1.1 and Sub1.2 within its <details> block in the root summary
+node -e '
+const fs = require("fs");
+const summaryPath = process.argv[1];
+const content = fs.readFileSync(summaryPath, "utf8");
+
+const act1Start = content.indexOf("Action1");
+const sub11Idx = content.indexOf("Sub1.1");
+const sub12Idx = content.indexOf("Sub1.2");
+
+if (act1Start === -1 || sub11Idx === -1 || sub12Idx === -1) {
+  console.error("Error: Phases missing in summary:", { summaryPath, act1Start, sub11Idx, sub12Idx, length: content.length });
+  process.exit(1);
+}
+
+const scopedSectionIdx = content.indexOf("### Scoped Actions & Milestones");
+if (scopedSectionIdx === -1) {
+  console.error("Error: Scoped Actions & Milestones section missing");
+  process.exit(1);
+}
+
+const scopedContent = content.slice(scopedSectionIdx);
+const scopedAct1Idx = scopedContent.indexOf("Action1");
+const scopedSub11Idx = scopedContent.indexOf("Sub1.1");
+const scopedSub12Idx = scopedContent.indexOf("Sub1.2");
+const act1CloseIdx = scopedContent.lastIndexOf("</details>");
+
+if (scopedSub11Idx < scopedAct1Idx || scopedSub12Idx < scopedAct1Idx || scopedSub12Idx > act1CloseIdx) {
+  console.error("Error: Sub-actions are not properly enclosed inside Action1 details block");
+  process.exit(1);
+}
+
+console.log("Tree hierarchy verified: Sub-actions enclosed inside parent action.");
+' "$GITHUB_STEP_SUMMARY"
+
+rm -rf "$TEST29_DIR"
+echo "Test 29 PASSED."
+
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="

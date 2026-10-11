@@ -12,14 +12,30 @@ const phaseEndInput = (process.env.INPUT_PHASE_END || '').trim();
 const milestoneInput = (process.env.INPUT_MILESTONE || '').trim();
 const isPhaseStep = Boolean(phaseStartInput || phaseEndInput || milestoneInput);
 
+const activeScopesFile = path.join(rootDir, 'active_scopes.json');
+function getActiveScopes() {
+  try {
+    if (fs.existsSync(activeScopesFile)) {
+      return JSON.parse(fs.readFileSync(activeScopesFile, 'utf8'));
+    }
+  } catch {
+    // fallback empty array
+  }
+  return [];
+}
+function saveActiveScopes(scopes) {
+  try {
+    fs.writeFileSync(activeScopesFile, JSON.stringify(scopes), 'utf8');
+  } catch {
+    // ignore
+  }
+}
+
 // Determine execution scope:
-// If root has not been initialized and this is not an explicit phase call, this step is ROOT_JOB.
-// Otherwise, it operates as a scoped phase step.
 const isRootJob = !hasRootInit && !isPhaseStep;
 
 let outDir = rootDir;
 if (!isRootJob) {
-  // Compute deterministic slug for phase isolation
   const phaseIdentifier = phaseStartInput || phaseEndInput || milestoneInput || 'scoped';
   const phaseSlug = phaseIdentifier.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
   outDir = path.join(rootDir, 'scopes', phaseSlug);
@@ -55,6 +71,12 @@ if (isAlreadyInitialized && isPhaseStep) {
       stdio: 'inherit',
       env: process.env,
     });
+    // Pop this phase from active scopes stack upon completion
+    const active = getActiveScopes();
+    const phaseSlug = phaseEndInput.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const updated = active.filter(s => s.slug !== phaseSlug);
+    saveActiveScopes(updated);
+
     if (summaryResult.error) {
       console.error('Failed to run summary.sh:', summaryResult.error);
       process.exit(1);
@@ -63,6 +85,19 @@ if (isAlreadyInitialized && isPhaseStep) {
   }
 
   process.exit(result.status !== null ? result.status : 0);
+}
+
+if (!isRootJob && phaseStartInput) {
+  const active = getActiveScopes();
+  const parent = active.length > 0 ? active[active.length - 1].slug : null;
+  const phaseSlug = phaseStartInput.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  fs.writeFileSync(path.join(outDir, 'meta.json'), JSON.stringify({
+    name: phaseStartInput,
+    slug: phaseSlug,
+    parentSlug: parent
+  }), 'utf8');
+  active.push({ name: phaseStartInput, slug: phaseSlug });
+  saveActiveScopes(active);
 }
 
 // Mark this invocation as the initialization step for this scope

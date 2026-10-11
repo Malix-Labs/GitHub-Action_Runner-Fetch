@@ -1220,6 +1220,85 @@ if [ "$IS_SCOPED" = "true" ]; then
 ${SUMMARY_MARKDOWN}
 </details>
 "
+	# Save this scoped markdown block inside the scope directory
+	printf '%s\n' "$SUMMARY_MARKDOWN" >|"${OUT_DIR}/summary.md"
+else
+	# Root Job Summary: check for nested scope summaries and embed them hierarchically
+	SCOPES_DIR="${ROOT_DIR}/scopes"
+	if [ -d "$SCOPES_DIR" ]; then
+		# Recursively build tree of scoped summaries
+		NESTED_SUMMARIES=$(node -e "
+const fs = require('fs');
+const path = require('path');
+const scopesDir = '$SCOPES_DIR';
+
+try {
+  const dirs = fs.readdirSync(scopesDir, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+    .map(d => d.name);
+
+  const nodes = {};
+  for (const dir of dirs) {
+    const metaPath = path.join(scopesDir, dir, 'meta.json');
+    const summaryPath = path.join(scopesDir, dir, 'summary.md');
+    let meta = { name: dir, slug: dir, parentSlug: null };
+    if (fs.existsSync(metaPath)) {
+      try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch {}
+    }
+    let content = '';
+    if (fs.existsSync(summaryPath)) {
+      content = fs.readFileSync(summaryPath, 'utf8').trim();
+    }
+    nodes[meta.slug] = {
+      name: meta.name,
+      slug: meta.slug,
+      parentSlug: meta.parentSlug,
+      content,
+      children: []
+    };
+  }
+
+  const roots = [];
+  for (const slug of Object.keys(nodes)) {
+    const node = nodes[slug];
+    if (node.parentSlug && nodes[node.parentSlug]) {
+      nodes[node.parentSlug].children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  function render(node) {
+    if (!node.content) return '';
+    if (node.children.length === 0) {
+      return node.content;
+    }
+    // Inject rendered children before the closing </details>
+    const childMd = node.children.map(render).filter(Boolean).join('\n\n');
+    const closeIdx = node.content.lastIndexOf('</details>');
+    if (closeIdx !== -1) {
+      return node.content.slice(0, closeIdx) + '\n\n' + childMd + '\n' + node.content.slice(closeIdx);
+    }
+    return node.content + '\n\n' + childMd;
+  }
+
+  const finalMd = roots.map(render).filter(Boolean).join('\n\n');
+  if (finalMd) {
+    process.stdout.write(finalMd);
+  }
+} catch (err) {
+  // Ignore error
+}
+")
+		if [ -n "$NESTED_SUMMARIES" ]; then
+			SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
+
+### Scoped Actions & Milestones
+
+${NESTED_SUMMARIES}
+"
+		fi
+	fi
 fi
 
 # Write to $GITHUB_STEP_SUMMARY only if enable-summary is not false
