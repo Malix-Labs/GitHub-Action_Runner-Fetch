@@ -639,6 +639,30 @@ if (!summary.gpu || summary.gpu.peak_percent !== 95 || summary.gpu.average_perce
   process.exit(1);
 }
 "
+# Sub-test 18b: Explicit monitor-gpu=true without nvidia-smi emits warning
+setup_test "test18b"
+export INPUT_MONITOR_GPU="true"
+mkdir -p "$RUN_DIR/runner-fetch"
+NIX_STORE_PATH=$(echo "$PATH" | tr ':' '\n' | grep '^/nix/store' | tr '\n' ':' | sed 's/:$//')
+WARN_OUTPUT=$(PATH="$NIX_STORE_PATH" sh -c "INPUT_SAMPLE_INTERVAL=1 INPUT_MONITOR_CPU=false INPUT_MONITOR_MEMORY=false INPUT_MONITOR_GPU=true RUNNER_TEMP='$RUN_DIR' sh '$REPO_ROOT/src/monitor.sh'" 2>&1 || true)
+
+if ! echo "$WARN_OUTPUT" | grep -q "::warning::"; then
+	echo "Error: Expected ::warning:: when monitor-gpu=true and no nvidia-smi present" >&2
+	echo "$WARN_OUTPUT" >&2
+	exit 1
+fi
+
+# Sub-test 18c: Empty monitor-gpu auto-detects without warning when no nvidia-smi present
+setup_test "test18c"
+export INPUT_MONITOR_GPU=""
+mkdir -p "$RUN_DIR/runner-fetch"
+AUTO_OUTPUT=$(PATH="$NIX_STORE_PATH" sh -c "INPUT_SAMPLE_INTERVAL=1 INPUT_MONITOR_CPU=false INPUT_MONITOR_MEMORY=false INPUT_MONITOR_GPU= RUNNER_TEMP='$RUN_DIR' sh '$REPO_ROOT/src/monitor.sh'" 2>&1 || true)
+if echo "$AUTO_OUTPUT" | grep -q "::warning::"; then
+	echo "Error: Unexpected ::warning:: when monitor-gpu is omitted" >&2
+	echo "$AUTO_OUTPUT" >&2
+	exit 1
+fi
+
 echo "Test 18 PASSED."
 
 echo "=== Test 19: Instantaneous milestone tracking and companion Gantt chart ==="

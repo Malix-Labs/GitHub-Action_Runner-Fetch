@@ -84,9 +84,12 @@ function isMonitorRunning() {
   }
 }
 
-const enableMonitor = Object.keys(process.env).some(
-  (k) => k.startsWith('INPUT_MONITOR_') && process.env[k] === 'true'
-);
+const enableMonitor =
+  Object.keys(process.env).some(
+    (k) => k.startsWith('INPUT_MONITOR_') && process.env[k] === 'true'
+  ) ||
+  process.env.INPUT_MONITOR_CPU !== 'false' ||
+  process.env.INPUT_MONITOR_MEMORY !== 'false';
 
 if (enableMonitor && !isMonitorRunning()) {
   try {

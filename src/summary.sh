@@ -31,7 +31,22 @@ ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
 ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 ENABLE_NET="${INPUT_MONITOR_NETWORK:-false}"
 ENABLE_DISK_IO="${INPUT_MONITOR_DISK_IO:-false}"
-ENABLE_GPU="${INPUT_MONITOR_GPU:-false}"
+
+HAS_NVIDIA_SMI="false"
+command -v nvidia-smi >/dev/null 2>&1 && HAS_NVIDIA_SMI="true"
+
+RAW_GPU="${INPUT_MONITOR_GPU:-}"
+if [ -z "$RAW_GPU" ]; then
+	ENABLE_GPU="$HAS_NVIDIA_SMI"
+elif [ "$RAW_GPU" = "true" ]; then
+	if [ "$HAS_NVIDIA_SMI" = "true" ]; then
+		ENABLE_GPU="true"
+	else
+		ENABLE_GPU="false"
+	fi
+else
+	ENABLE_GPU="false"
+fi
 
 if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ] && [ "$ENABLE_GPU" = "false" ]; then
 	exit 0

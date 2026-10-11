@@ -57,7 +57,21 @@ ENABLE_DISK="${INPUT_MONITOR_DISK:-false}"
 ENABLE_SWAP="${INPUT_MONITOR_SWAP:-false}"
 ENABLE_NET="${INPUT_MONITOR_NETWORK:-false}"
 ENABLE_DISK_IO="${INPUT_MONITOR_DISK_IO:-false}"
-ENABLE_GPU="${INPUT_MONITOR_GPU:-false}"
+
+RAW_GPU="${INPUT_MONITOR_GPU:-}"
+if [ -z "$RAW_GPU" ]; then
+	# Auto-detection: enable if nvidia-smi exists
+	ENABLE_GPU="$HAS_NVIDIA_SMI"
+elif [ "$RAW_GPU" = "true" ]; then
+	if [ "$HAS_NVIDIA_SMI" = "true" ]; then
+		ENABLE_GPU="true"
+	else
+		echo "::warning::monitor-gpu was explicitly set to true, but no NVIDIA GPU driver / nvidia-smi was found on this runner."
+		ENABLE_GPU="false"
+	fi
+else
+	ENABLE_GPU="false"
+fi
 
 if [ "$ENABLE_CPU" = "false" ] && [ "$ENABLE_MEM" = "false" ] && [ "$ENABLE_DISK" = "false" ] && [ "$ENABLE_SWAP" = "false" ] && [ "$ENABLE_NET" = "false" ] && [ "$ENABLE_DISK_IO" = "false" ] && [ "$ENABLE_GPU" = "false" ]; then
 	exit 0

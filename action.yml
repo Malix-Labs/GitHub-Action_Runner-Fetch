@@ -29,8 +29,8 @@ inputs:
     description: "Monitor swap space usage and paging."
     default: "false"
   monitor-gpu:
-    description: "Monitor GPU utilization and VRAM (auto-detects nvidia-smi)."
-    default: "false"
+    description: "Monitor GPU utilization and VRAM (optional boolean; auto-detects nvidia-smi if omitted)."
+    default: ""
   sample-interval:
     description: "Telemetry sampling interval in seconds."
     default: "2"
