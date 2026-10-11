@@ -1303,8 +1303,15 @@ fi
 
 # Write to $GITHUB_STEP_SUMMARY only if enable-summary is not false
 ENABLE_SUMMARY="${INPUT_ENABLE_SUMMARY:-true}"
+ROOT_EXISTS="false"
+[ -f "${ROOT_DIR}/init_done" ] && ROOT_EXISTS="true"
+
+# If this is a scoped action and a root job exists, the root post summary will assemble and render it hierarchically.
+# Only write directly to GITHUB_STEP_SUMMARY if this is the root summary, OR if running as a standalone scoped action without any root runner-fetch init.
 if [ "$ENABLE_SUMMARY" != "false" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-	printf '%s\n' "$SUMMARY_MARKDOWN" >>"$GITHUB_STEP_SUMMARY"
+	if [ "$IS_SCOPED" != "true" ] || [ "$ROOT_EXISTS" = "false" ]; then
+		printf '%s\n' "$SUMMARY_MARKDOWN" >>"$GITHUB_STEP_SUMMARY"
+	fi
 fi
 
 # Emit structured log groups to stdout for CI log inspection
