@@ -12,6 +12,7 @@ setup_test() {
 	export RUNNER_TEMP="$RUN_DIR"
 	export GITHUB_OUTPUT="$RUN_DIR/output.txt"
 	export GITHUB_STEP_SUMMARY="$RUN_DIR/summary.md"
+	unset GITHUB_STATE STATE_is_primary_init || true
 	export INPUT_DISK_TREE="false"
 	export INPUT_SAMPLE_INTERVAL="1"
 	export INPUT_EXPORT_PROMETHEUS="true"
@@ -24,6 +25,12 @@ setup_test() {
 	export INPUT_MONITOR_GPU=""
 	: >|"$GITHUB_OUTPUT"
 	: >|"$GITHUB_STEP_SUMMARY"
+}
+
+setup_state_test() {
+	setup_test "$1"
+	export GITHUB_STATE="$RUN_DIR/state.txt"
+	: >|"$GITHUB_STATE"
 }
 
 echo "=== Test 1: Normal execution & telemetry generation ==="
@@ -1120,15 +1127,7 @@ done
 echo "Test 24 PASSED."
 
 echo "=== Test 25: Automatic step-scoped monitoring with immediate summary ==="
-TEST25_DIR=$(mktemp -d)
-export RUNNER_TEMP="$TEST25_DIR"
-export INPUT_MONITOR_CPU="true"
-export INPUT_MONITOR_MEMORY="true"
-export INPUT_SAMPLE_INTERVAL="1"
-export GITHUB_OUTPUT="${TEST25_DIR}/output.txt"
-export GITHUB_STATE="${TEST25_DIR}/state.txt"
-export GITHUB_STEP_SUMMARY="${TEST25_DIR}/summary.md"
-touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
+setup_state_test "test25"
 
 # Step 1: Initialize scoped phase (without any manual scope-level input)
 export INPUT_PHASE_START="ScopedPhase"
@@ -1136,7 +1135,7 @@ export INPUT_PHASE_END=""
 node src/main.js
 
 # Verify scoped directory was created under scopes/scopedphase and is_primary_init was NOT written to GITHUB_STATE
-SCOPED_OUT_DIR="${TEST25_DIR}/runner-fetch/scopes/scopedphase"
+SCOPED_OUT_DIR="${RUN_DIR}/runner-fetch/scopes/scopedphase"
 if [ ! -d "$SCOPED_OUT_DIR" ]; then
 	echo "Error: Scoped directory $SCOPED_OUT_DIR was not created" >&2
 	exit 1
@@ -1171,20 +1170,10 @@ fi
 
 # Verify post.js exits cleanly in 0ms without re-running
 node src/post.js
-rm -rf "$TEST25_DIR"
-
 echo "Test 25 PASSED."
 
 echo "=== Test 26: Sibling phases running at identical depth in separate directories ==="
-TEST26_DIR=$(mktemp -d)
-export RUNNER_TEMP="$TEST26_DIR"
-export INPUT_MONITOR_CPU="true"
-export INPUT_MONITOR_MEMORY="true"
-export INPUT_SAMPLE_INTERVAL="1"
-export GITHUB_OUTPUT="${TEST26_DIR}/output.txt"
-export GITHUB_STATE="${TEST26_DIR}/state.txt"
-export GITHUB_STEP_SUMMARY="${TEST26_DIR}/summary.md"
-touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
+setup_test "test26"
 
 # Sibling Phase A
 export INPUT_PHASE_START="SubActionA"
@@ -1196,27 +1185,18 @@ export INPUT_PHASE_START="SubActionB"
 export INPUT_PHASE_END=""
 node src/main.js
 
-DIR_A="${TEST26_DIR}/runner-fetch/scopes/subactiona"
-DIR_B="${TEST26_DIR}/runner-fetch/scopes/subactionb"
+DIR_A="${RUN_DIR}/runner-fetch/scopes/subactiona"
+DIR_B="${RUN_DIR}/runner-fetch/scopes/subactionb"
 
 if [ ! -d "$DIR_A" ] || [ ! -d "$DIR_B" ]; then
 	echo "Error: Sibling directories not isolated properly ($DIR_A, $DIR_B)" >&2
 	exit 1
 fi
 
-rm -rf "$TEST26_DIR"
 echo "Test 26 PASSED."
 
 echo "=== Test 27: Root Gantt chart includes phases recorded from nested sub-scopes ==="
-TEST27_DIR=$(mktemp -d)
-export RUNNER_TEMP="$TEST27_DIR"
-export INPUT_MONITOR_CPU="true"
-export INPUT_MONITOR_MEMORY="true"
-export INPUT_SAMPLE_INTERVAL="1"
-export GITHUB_OUTPUT="${TEST27_DIR}/output.txt"
-export GITHUB_STATE="${TEST27_DIR}/state.txt"
-export GITHUB_STEP_SUMMARY="${TEST27_DIR}/summary.md"
-touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
+setup_state_test "test27"
 
 # Step 1: Root initialization
 export INPUT_PHASE_START=""
@@ -1236,13 +1216,12 @@ node src/main.js
 export STATE_is_primary_init="true"
 node src/post.js
 
-if ! grep -q "NestedTask : active" "${TEST27_DIR}/runner-fetch/gantt.mermaid"; then
+if ! grep -q "NestedTask : active" "${RUN_DIR}/runner-fetch/gantt.mermaid"; then
 	echo "Error: NestedTask missing in root gantt.mermaid" >&2
-	cat "${TEST27_DIR}/runner-fetch/gantt.mermaid" >&2
+	cat "${RUN_DIR}/runner-fetch/gantt.mermaid" >&2
 	exit 1
 fi
 
-rm -rf "$TEST27_DIR"
 echo "Test 27 PASSED."
 
 echo "=== Test 28: enable-summary: false suppresses Step Summary write while preserving outputs ==="
@@ -1276,16 +1255,8 @@ fi
 echo "Test 28 PASSED."
 
 echo "=== Test 29: Multi-level hierarchical tree nesting (top + 2 nested + 2 sub-nested) ==="
-TEST29_DIR=$(mktemp -d)
-export RUNNER_TEMP="$TEST29_DIR"
+setup_state_test "test29"
 export INPUT_ENABLE_SUMMARY="true"
-export INPUT_MONITOR_CPU="true"
-export INPUT_MONITOR_MEMORY="true"
-export INPUT_SAMPLE_INTERVAL="1"
-export GITHUB_OUTPUT="${TEST29_DIR}/output.txt"
-export GITHUB_STATE="${TEST29_DIR}/state.txt"
-export GITHUB_STEP_SUMMARY="${TEST29_DIR}/summary.md"
-touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
 
 # Level 0: Top-level init
 export INPUT_PHASE_START=""
@@ -1357,7 +1328,6 @@ if (scopedSub11Idx < scopedAct1Idx || scopedSub12Idx < scopedAct1Idx || scopedSu
 console.log("Tree hierarchy verified: Sub-actions enclosed inside parent action.");
 ' "$GITHUB_STEP_SUMMARY"
 
-rm -rf "$TEST29_DIR"
 echo "Test 29 PASSED."
 
 echo "=== ALL SCENARIOS PASSED SUCCESSFULLY ==="
