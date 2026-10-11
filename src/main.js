@@ -13,23 +13,10 @@ const milestoneInput = (process.env.INPUT_MILESTONE || '').trim();
 const isPhaseStep = Boolean(phaseStartInput || phaseEndInput || milestoneInput);
 
 const activeScopesFile = path.join(rootDir, 'active_scopes.json');
-function getActiveScopes() {
-  try {
-    if (fs.existsSync(activeScopesFile)) {
-      return JSON.parse(fs.readFileSync(activeScopesFile, 'utf8'));
-    }
-  } catch {
-    // fallback empty array
-  }
-  return [];
-}
-function saveActiveScopes(scopes) {
-  try {
-    fs.writeFileSync(activeScopesFile, JSON.stringify(scopes), 'utf8');
-  } catch {
-    // ignore
-  }
-}
+const readActiveScopes = () => {
+  try { return JSON.parse(fs.readFileSync(activeScopesFile, 'utf8')); } catch { return []; }
+};
+const writeActiveScopes = (s) => fs.writeFileSync(activeScopesFile, JSON.stringify(s), 'utf8');
 
 // Determine execution scope:
 const isRootJob = !hasRootInit && !isPhaseStep;
@@ -72,10 +59,9 @@ if (isAlreadyInitialized && isPhaseStep) {
       env: process.env,
     });
     // Pop this phase from active scopes stack upon completion
-    const active = getActiveScopes();
+    const active = readActiveScopes();
     const phaseSlug = phaseEndInput.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    const updated = active.filter(s => s.slug !== phaseSlug);
-    saveActiveScopes(updated);
+    writeActiveScopes(active.filter(s => s.slug !== phaseSlug));
 
     if (summaryResult.error) {
       console.error('Failed to run summary.sh:', summaryResult.error);
@@ -88,7 +74,7 @@ if (isAlreadyInitialized && isPhaseStep) {
 }
 
 if (!isRootJob && phaseStartInput) {
-  const active = getActiveScopes();
+  const active = readActiveScopes();
   const parent = active.length > 0 ? active[active.length - 1].slug : null;
   const phaseSlug = phaseStartInput.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
   fs.writeFileSync(path.join(outDir, 'meta.json'), JSON.stringify({
@@ -97,7 +83,7 @@ if (!isRootJob && phaseStartInput) {
     parentSlug: parent
   }), 'utf8');
   active.push({ name: phaseStartInput, slug: phaseSlug });
-  saveActiveScopes(active);
+  writeActiveScopes(active);
 }
 
 // Mark this invocation as the initialization step for this scope
