@@ -1122,8 +1122,13 @@ fi
 [ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && SUMMARY_TABLE="${SUMMARY_TABLE}
 | **CPU Steal (Contention)** | - | **${CPU_STEAL_MAX}%** | Hypervisor throttling detected | - |"
 
-SUMMARY_MARKDOWN="## Runner Telemetry & Resource Summary
+if [ "$IS_SCOPED" = "true" ]; then
+	SUMMARY_MARKDOWN="### Phase '${SCOPE_NAME}' Telemetry
 "
+else
+	SUMMARY_MARKDOWN="## Runner Telemetry & Resource Summary
+"
+fi
 if [ "$OOM_DETECTED" = "true" ]; then
 	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
 > [!CAUTION]"
@@ -1154,7 +1159,7 @@ SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
 ${SUMMARY_TABLE}
 "
 
-if [ -n "$PHASE_TABLE_ROWS" ]; then
+if [ "$IS_SCOPED" != "true" ] && [ -n "$PHASE_TABLE_ROWS" ]; then
 	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
 ### Phase Breakdown
 
@@ -1166,7 +1171,9 @@ ${PHASE_TABLE_ROWS}
 fi
 
 GANTT_CONTENT=""
-[ -s "$GANTT_FILE" ] && GANTT_CONTENT=$(cat "$GANTT_FILE")
+if [ "$IS_SCOPED" != "true" ] && [ -s "$GANTT_FILE" ]; then
+	GANTT_CONTENT=$(cat "$GANTT_FILE")
+fi
 if [ -n "$GANTT_CONTENT" ]; then
 	SUMMARY_MARKDOWN="${SUMMARY_MARKDOWN}
 ${GANTT_CONTENT}

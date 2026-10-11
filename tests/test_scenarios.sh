@@ -762,12 +762,14 @@ if ! grep -q "\| \*\*Cache Restored\*\* \|" "$GITHUB_STEP_SUMMARY"; then
 	exit 1
 fi
 
-# Verify Gantt diagram appears before the Resource Utilization Timeline chart
+# Verify Gantt diagram appears before the Resource Utilization Timeline chart in the root section
 node -e "
 const fs = require('fs');
 const content = fs.readFileSync('$GITHUB_STEP_SUMMARY', 'utf8');
-const ganttIdx = content.indexOf('gantt\n');
-const chartIdx = content.indexOf('### Resource Utilization Timeline');
+const rootIdx = content.indexOf('## Runner Telemetry & Resource Summary');
+const subContent = rootIdx !== -1 ? content.slice(rootIdx) : content;
+const ganttIdx = subContent.indexOf('gantt\n');
+const chartIdx = subContent.indexOf('### Resource Utilization Timeline');
 if (ganttIdx === -1 || chartIdx === -1 || ganttIdx > chartIdx) {
   console.error('Error: Gantt chart must precede the Resource Utilization Timeline chart. ganttIdx:', ganttIdx, 'chartIdx:', chartIdx);
   process.exit(1);
