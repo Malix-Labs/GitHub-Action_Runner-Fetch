@@ -73,14 +73,12 @@ if [ -n "$PHASE_END" ]; then
 
 	# If samples.tsv exists, calculate metrics specifically for this phase
 	START_EPOCH=0
-	if [ -f "$PHASES_FILE" ]; then
-		START_EPOCH=$(awk -F'\t' -v name="$PHASE_END" '$1 == "START" && $3 == name { s = $2 } END { print s }' "$PHASES_FILE")
-	fi
-	if [ -z "$START_EPOCH" ] || [ "$START_EPOCH" -eq 0 ]; then
-		if [ -f "$ROOT_PHASES_FILE" ]; then
-			START_EPOCH=$(awk -F'\t' -v name="$PHASE_END" '$1 == "START" && $3 == name { s = $2 } END { print s }' "$ROOT_PHASES_FILE")
+	for pf in "$PHASES_FILE" "$ROOT_PHASES_FILE"; do
+		if [ -f "$pf" ] && [ "${START_EPOCH:-0}" -eq 0 ]; then
+			s=$(awk -F'\t' -v name="$PHASE_END" '$1 == "START" && $3 == name { s = $2 } END { print s }' "$pf")
+			[ -n "$s" ] && START_EPOCH="$s"
 		fi
-	fi
+	done
 
 	PHASE_DUR=0
 	PHASE_PEAK_MEM=0
