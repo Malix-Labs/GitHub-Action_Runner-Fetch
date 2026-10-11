@@ -1107,25 +1107,21 @@ SUMMARY_TABLE="| Metric | Baseline / Min | Peak / Max | Final / Avg | Trend |
 | **GPU Utilization** | - | **${GPU_PEAK}%** | Avg: **${GPU_AVG}%** | \`${GPU_SPARKLINE}\` |"
 [ "$ENABLE_GPU" = "true" ] && SUMMARY_TABLE="${SUMMARY_TABLE}
 | **GPU VRAM** | - | **${VRAM_PEAK_MB} MB** | Total: ${VRAM_TOTAL_MB} MB | \`${VRAM_SPARKLINE}\` |"
-if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
-	if [ "$ENABLE_DISK" = "true" ]; then
-		SUMMARY_TABLE="${SUMMARY_TABLE}
-| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
-	else
-		SUMMARY_TABLE="${SUMMARY_TABLE}
-| **Disk Storage Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | - | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
-	fi
-elif [ "$ENABLE_DISK" = "true" ]; then
-	SUMMARY_TABLE="${SUMMARY_TABLE}
-| **Disk Consumed** | - | Net: **${DISK_CONSUMED_MB} MB** | - | - |"
-fi
-[ "$ENABLE_CPU" = "true" ] && [ "$CPU_STEAL_MAX" -gt 0 ] && SUMMARY_TABLE="${SUMMARY_TABLE}
-| **CPU Steal (Contention)** | - | **${CPU_STEAL_MAX}%** | Hypervisor throttling detected | - |"
-
 if [ "$IS_SCOPED" = "true" ]; then
-	SUMMARY_MARKDOWN="### Phase '${SCOPE_NAME}' Telemetry
-"
+	SUMMARY_MARKDOWN=""
 else
+	if [ -n "$ROOT_TOTAL_BYTES" ] && [ "$ROOT_TOTAL_BYTES" -gt 0 ]; then
+		if [ "$ENABLE_DISK" = "true" ]; then
+			SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Disk Consumed & Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | Net Consumed: **${DISK_CONSUMED_MB} MB** | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
+		else
+			SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Disk Storage Baseline** | Pre-installed: **${ROOT_USED_GB} GB** (${ROOT_USED_PCT}%) | - | Free: **${ROOT_FREE_GB} GB** / ${ROOT_TOTAL_GB} GB | - |"
+		fi
+	elif [ "$ENABLE_DISK" = "true" ]; then
+		SUMMARY_TABLE="${SUMMARY_TABLE}
+| **Disk Consumed** | - | Net: **${DISK_CONSUMED_MB} MB** | - | - |"
+	fi
 	SUMMARY_MARKDOWN="## Runner Telemetry & Resource Summary
 "
 fi
