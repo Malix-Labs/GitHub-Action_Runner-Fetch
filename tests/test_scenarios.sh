@@ -18,6 +18,10 @@ setup_test() {
 	export INPUT_MONITOR_CPU="true"
 	export INPUT_MONITOR_MEMORY="true"
 	export INPUT_MONITOR_DISK="false"
+	export INPUT_MONITOR_SWAP="false"
+	export INPUT_MONITOR_NETWORK="false"
+	export INPUT_MONITOR_DISK_IO="false"
+	export INPUT_MONITOR_GPU=""
 	: >|"$GITHUB_OUTPUT"
 	: >|"$GITHUB_STEP_SUMMARY"
 }
@@ -1113,10 +1117,9 @@ done
 
 echo "Test 24 PASSED."
 
-echo "=== Test 25: Step-scoped monitoring (scope-level >= 1) with immediate summary ==="
+echo "=== Test 25: Automatic step-scoped monitoring with immediate summary ==="
 TEST25_DIR=$(mktemp -d)
 export RUNNER_TEMP="$TEST25_DIR"
-export INPUT_SCOPE_LEVEL="1"
 export INPUT_MONITOR_CPU="true"
 export INPUT_MONITOR_MEMORY="true"
 export INPUT_SAMPLE_INTERVAL="1"
@@ -1125,19 +1128,19 @@ export GITHUB_STATE="${TEST25_DIR}/state.txt"
 export GITHUB_STEP_SUMMARY="${TEST25_DIR}/summary.md"
 touch "$GITHUB_OUTPUT" "$GITHUB_STATE" "$GITHUB_STEP_SUMMARY"
 
-# Step 1: Initialize scoped phase
+# Step 1: Initialize scoped phase (without any manual scope-level input)
 export INPUT_PHASE_START="ScopedPhase"
 export INPUT_PHASE_END=""
 node src/main.js
 
-# Verify scoped directory was created and is_primary_init was NOT written to GITHUB_STATE
-SCOPED_OUT_DIR="${TEST25_DIR}/runner-fetch-scope-1"
+# Verify scoped directory was created under scopes/scopedphase and is_primary_init was NOT written to GITHUB_STATE
+SCOPED_OUT_DIR="${TEST25_DIR}/runner-fetch/scopes/scopedphase"
 if [ ! -d "$SCOPED_OUT_DIR" ]; then
 	echo "Error: Scoped directory $SCOPED_OUT_DIR was not created" >&2
 	exit 1
 fi
 if grep -q "is_primary_init=true" "$GITHUB_STATE"; then
-	echo "Error: is_primary_init should not be set for scoped-level >= 1" >&2
+	echo "Error: is_primary_init should not be set for scoped phase steps" >&2
 	exit 1
 fi
 

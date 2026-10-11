@@ -2,9 +2,17 @@
 set -euC
 
 OUT_DIR="${RUNNER_FETCH_DIR:-${RUNNER_TEMP:-/tmp}/runner-fetch}"
+ROOT_DIR="${RUNNER_FETCH_ROOT_DIR:-${RUNNER_TEMP:-/tmp}/runner-fetch}"
 mkdir -p "$OUT_DIR"
 PHASES_FILE="${OUT_DIR}/phases.tsv"
 SAMPLES_FILE="${OUT_DIR}/samples.tsv"
+ROOT_PHASES_FILE="${ROOT_DIR}/phases.tsv"
+ROOT_SAMPLES_FILE="${ROOT_DIR}/samples.tsv"
+
+# If root has a samples.tsv and current scope does not, point SAMPLES_FILE to root
+if [ ! -f "$SAMPLES_FILE" ] && [ -f "$ROOT_SAMPLES_FILE" ]; then
+	SAMPLES_FILE="$ROOT_SAMPLES_FILE"
+fi
 
 PHASE_START="${INPUT_PHASE_START:-}"
 PHASE_END="${INPUT_PHASE_END:-}"
@@ -39,6 +47,9 @@ if [ -n "$MILESTONE" ]; then
 	fi
 
 	printf "MILESTONE\t%s\t%d\t%d\t%d\t%d\n" "$MILESTONE" "$NOW" "${M_MEM:-0}" "${M_CPU:-0}" "${M_DISK:-0}" >>"$PHASES_FILE"
+	if [ "$OUT_DIR" != "$ROOT_DIR" ] && [ -d "$ROOT_DIR" ]; then
+		printf "MILESTONE\t%s\t%d\t%d\t%d\t%d\n" "$MILESTONE" "$NOW" "${M_MEM:-0}" "${M_CPU:-0}" "${M_DISK:-0}" >>"$ROOT_PHASES_FILE"
+	fi
 	echo "Runner Telemetry: Marked milestone '${MILESTONE}' at epoch ${NOW}"
 
 	if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -55,12 +66,20 @@ fi
 # Handle phase end first so that steps transitioning between phases complete the preceding phase before starting the next.
 if [ -n "$PHASE_END" ]; then
 	printf "END\t%d\t%s\n" "$NOW" "$PHASE_END" >>"$PHASES_FILE"
+	if [ "$OUT_DIR" != "$ROOT_DIR" ] && [ -d "$ROOT_DIR" ]; then
+		printf "END\t%d\t%s\n" "$NOW" "$PHASE_END" >>"$ROOT_PHASES_FILE"
+	fi
 	echo "Runner Telemetry: Marked phase end '${PHASE_END}' at epoch ${NOW}"
 
 	# If samples.tsv exists, calculate metrics specifically for this phase
 	START_EPOCH=0
 	if [ -f "$PHASES_FILE" ]; then
 		START_EPOCH=$(awk -F'\t' -v name="$PHASE_END" '$1 == "START" && $3 == name { s = $2 } END { print s }' "$PHASES_FILE")
+	fi
+	if [ -z "$START_EPOCH" ] || [ "$START_EPOCH" -eq 0 ]; then
+		if [ -f "$ROOT_PHASES_FILE" ]; then
+			START_EPOCH=$(awk -F'\t' -v name="$PHASE_END" '$1 == "START" && $3 == name { s = $2 } END { print s }' "$ROOT_PHASES_FILE")
+		fi
 	fi
 
 	PHASE_DUR=0
@@ -104,6 +123,9 @@ EOF
 
 	# Persist summary line for post summary breakdown table
 	printf "SUMMARY\t%s\t%d\t%d\t%d\t%d\t%d\t%d\n" "$PHASE_END" "$PHASE_DUR" "$PHASE_PEAK_MEM" "$PHASE_AVG_CPU" "$PHASE_DISK_CONSUMED" "${START_EPOCH:-$NOW}" "$NOW" >>"$PHASES_FILE"
+	if [ "$OUT_DIR" != "$ROOT_DIR" ] && [ -d "$ROOT_DIR" ]; then
+		printf "SUMMARY\t%s\t%d\t%d\t%d\t%d\t%d\t%d\n" "$PHASE_END" "$PHASE_DUR" "$PHASE_PEAK_MEM" "$PHASE_AVG_CPU" "$PHASE_DISK_CONSUMED" "${START_EPOCH:-$NOW}" "$NOW" >>"$ROOT_PHASES_FILE"
+	fi
 
 	if [ -n "${GITHUB_OUTPUT:-}" ]; then
 		{
@@ -118,5 +140,8 @@ fi
 
 if [ -n "$PHASE_START" ]; then
 	printf "START\t%d\t%s\n" "$NOW" "$PHASE_START" >>"$PHASES_FILE"
+	if [ "$OUT_DIR" != "$ROOT_DIR" ] && [ -d "$ROOT_DIR" ]; then
+		printf "START\t%d\t%s\n" "$NOW" "$PHASE_START" >>"$ROOT_PHASES_FILE"
+	fi
 	echo "Runner Telemetry: Marked phase start '${PHASE_START}' at epoch ${NOW}"
 fi

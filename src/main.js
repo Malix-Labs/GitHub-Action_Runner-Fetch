@@ -3,10 +3,30 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const scopeLevel = Number.parseInt(process.env.INPUT_SCOPE_LEVEL || '0', 10) || 0;
-const dirSuffix = scopeLevel > 0 ? `runner-fetch-scope-${scopeLevel}` : 'runner-fetch';
-const outDir = path.join(process.env.RUNNER_TEMP || '/tmp', dirSuffix);
+const rootDir = path.join(process.env.RUNNER_TEMP || '/tmp', 'runner-fetch');
+const rootInitDoneFile = path.join(rootDir, 'init_done');
+const hasRootInit = fs.existsSync(rootInitDoneFile);
+
+const phaseStartInput = (process.env.INPUT_PHASE_START || '').trim();
+const phaseEndInput = (process.env.INPUT_PHASE_END || '').trim();
+const milestoneInput = (process.env.INPUT_MILESTONE || '').trim();
+const isPhaseStep = Boolean(phaseStartInput || phaseEndInput || milestoneInput);
+
+// Determine execution scope:
+// If root has not been initialized and this is not an explicit phase call, this step is ROOT_JOB.
+// Otherwise, it operates as a scoped phase step.
+const isRootJob = !hasRootInit && !isPhaseStep;
+
+let outDir = rootDir;
+if (!isRootJob) {
+  // Compute deterministic slug for phase isolation
+  const phaseIdentifier = phaseStartInput || phaseEndInput || milestoneInput || 'scoped';
+  const phaseSlug = phaseIdentifier.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  outDir = path.join(rootDir, 'scopes', phaseSlug);
+}
+
 process.env.RUNNER_FETCH_DIR = outDir;
+process.env.RUNNER_FETCH_ROOT_DIR = rootDir;
 
 const pidFile = path.join(outDir, 'monitor.pid');
 const monitorScript = path.join(import.meta.dirname, 'monitor.sh');
@@ -17,12 +37,6 @@ const summaryScript = path.join(import.meta.dirname, 'summary.sh');
 fs.mkdirSync(outDir, { recursive: true });
 
 const initDoneFile = path.join(outDir, 'init_done');
-const isPhaseStep = Boolean(
-  (process.env.INPUT_PHASE_START && process.env.INPUT_PHASE_START.trim()) ||
-    (process.env.INPUT_PHASE_END && process.env.INPUT_PHASE_END.trim()) ||
-    (process.env.INPUT_MILESTONE && process.env.INPUT_MILESTONE.trim())
-);
-
 const isAlreadyInitialized = fs.existsSync(initDoneFile);
 
 if (isAlreadyInitialized && isPhaseStep) {
@@ -36,7 +50,7 @@ if (isAlreadyInitialized && isPhaseStep) {
   }
 
   // If this is a scoped action completing its phase, trigger summary and teardown immediately
-  if (scopeLevel >= 1 && process.env.INPUT_PHASE_END && process.env.INPUT_PHASE_END.trim()) {
+  if (!isRootJob && phaseEndInput) {
     const summaryResult = spawnSync('sh', [summaryScript], {
       stdio: 'inherit',
       env: process.env,
@@ -53,7 +67,7 @@ if (isAlreadyInitialized && isPhaseStep) {
 
 // Mark this invocation as the initialization step for this scope
 fs.writeFileSync(initDoneFile, String(process.pid), 'utf8');
-if (scopeLevel === 0 && process.env.GITHUB_STATE) {
+if (isRootJob && process.env.GITHUB_STATE) {
   try {
     fs.appendFileSync(process.env.GITHUB_STATE, 'is_primary_init=true\n');
   } catch (err) {

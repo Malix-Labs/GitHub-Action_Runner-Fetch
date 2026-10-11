@@ -35,15 +35,23 @@ ENABLE_DISK_IO="${INPUT_MONITOR_DISK_IO:-false}"
 HAS_NVIDIA_SMI="false"
 command -v nvidia-smi >/dev/null 2>&1 && HAS_NVIDIA_SMI="true"
 
+# In summary/reporting, if samples.tsv contains non-zero GPU metrics, treat as having GPU data
+HAS_GPU_SAMPLES="false"
+if [ -f "$SAMPLES_FILE" ]; then
+	if awk -F'\t' 'NR > 1 && (NF >= 17) && ($17 > 0 || $18 > 0 || $19 > 0) { found=1; exit } END { exit !found }' "$SAMPLES_FILE" 2>/dev/null; then
+		HAS_GPU_SAMPLES="true"
+	fi
+fi
+
 RAW_GPU="${INPUT_MONITOR_GPU:-}"
 if [ -z "$RAW_GPU" ]; then
-	ENABLE_GPU="$HAS_NVIDIA_SMI"
-elif [ "$RAW_GPU" = "true" ]; then
-	if [ "$HAS_NVIDIA_SMI" = "true" ]; then
+	if [ "$HAS_NVIDIA_SMI" = "true" ] || [ "$HAS_GPU_SAMPLES" = "true" ]; then
 		ENABLE_GPU="true"
 	else
 		ENABLE_GPU="false"
 	fi
+elif [ "$RAW_GPU" = "true" ]; then
+	ENABLE_GPU="true"
 else
 	ENABLE_GPU="false"
 fi
