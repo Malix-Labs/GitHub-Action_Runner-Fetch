@@ -76,7 +76,7 @@ fi
 TARGET_OS="${RUNNER_OS:-Linux}"
 RUNNER_NAME="${RUNNER_NAME:-unknown}"
 PROM_TARGET=""
-[ "${INPUT_EXPORT_PROMETHEUS:-true}" = "true" ] && PROM_TARGET="$PROM_FILE"
+[ "${INPUT_EXPORT_PROMETHEUS:-}" = "true" ] && PROM_TARGET="$PROM_FILE"
 
 RUNNER_START_EPOCH=""
 if [ -n "${RUNNER_TEMP:-}" ] && [ -d "$RUNNER_TEMP" ]; then

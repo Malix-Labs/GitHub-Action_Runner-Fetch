@@ -5,7 +5,7 @@ OUT_DIR="${RUNNER_FETCH_DIR:-${RUNNER_TEMP:-/tmp}/runner-fetch}"
 mkdir -p "$OUT_DIR"
 PID_FILE="${OUT_DIR}/monitor.pid"
 SAMPLES_FILE="${OUT_DIR}/samples.tsv"
-SAMPLE_INTERVAL="${INPUT_SAMPLE_INTERVAL:-2}"
+SAMPLE_INTERVAL="${INPUT_SAMPLE_INTERVAL:-}"
 
 echo "$$" >|"$PID_FILE"
 trap 'exit 0' TERM INT QUIT HUP
